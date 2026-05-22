@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="navy_primary">#FF3D5A78</color>
+    <color name="navy_primary_dark">#FF7A9BB5</color>
+    <color name="light_background">#FFF6F7FA</color>
+    <color name="dark_background">#FF0C0E12</color>
+    <color name="light_surface">#FFEEF0F5</color>
+    <color name="dark_surface">#FF14171D</color>
+    <color name="coral_red">#FFD94A3A</color>
+    <color name="black">#FF0C0E12</color>
+    <color name="white">#FFF6F7FA</color>
+</resources>
