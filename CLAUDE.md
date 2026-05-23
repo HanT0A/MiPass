@@ -68,7 +68,7 @@ MiPass 是一款主打"绝对隐私、纯净无干扰、极致安全"的 Android
 
 - **防截屏/防多任务偷窥**: `WindowManager.LayoutParams.FLAG_SECURE` 全局启用
 - **防窥模糊遮罩**: ON_STOP 时顶层覆盖黑色遮罩，ON_START 验证后撤销
-- **剪贴板清洗**: 复制后后台协程倒计时，超时自动清空（仅清理本应用复制的内容，时长可配置）
+- **剪贴板保护**: 复制时通过 `ClipManager.setPrimaryClip` 写入并标记 `IS_SENSITIVE` (API 33+)，防止被其他应用读取（Vivo OEM 剪贴板历史无法程序化清除）
 - **内存脱敏**: ViewModel 持有的密码字段在非必要情况下保持脱敏状态
 - **密码输入掩码**: 所有密码输入框默认显示 ······，眼睛图标切换明文
 - **自毁机制**: 连续 10 次验证失败 → 擦除数据库/快照/DEK/KeyStore/偏好设置 → killProcess
@@ -269,7 +269,16 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] 隐私模糊遮罩：切后台时覆盖黑色遮罩
 - [x] FLAG_SECURE 防截屏/录屏
 - [x] 清除所有数据：生物验证 + 手打 DELETE 确认
-- [x] 剪贴板 30 秒自动清理（可配置）
+- [x] 剪贴板保护：copyText() 使用 IS_SENSITIVE 标记 (API 33+)，自动清理已移除 (Vivo OEM 限制)
+- [x] 启动/锁屏退出重入黑屏修复：hasAuthenticated 条件控制隐私遮罩
+- [x] 隐私遮罩颜色跟随主题：浅色模式白色、深色模式黑色
+- [x] 生物识别默认关闭 (biometricEnabled=false)，需用户手动开启
+- [x] 生物识别竞态防护：generation counter 阻止过期回调污染新认证
+- [x] 生物识别 errorCode 处理：5 (取消/后台) 保持遮罩，10/13 (用户返回) 显示解锁页
+- [x] ON_START/解锁重试生物识别：biometricEnabled 时自动重试
+- [x] Activity 重建保护：onSaveInstanceState 维持认证状态，配置变更无需重新认证
+- [x] skipNextLockCheck：导入/导出文件选择器返回时跳过锁超时
+- [x] 导出验证流程：生物识别优先，不可用时回退主密码
 
 **数据管理**
 - [x] CRUD：新增/编辑（ModalBottomSheet）/查看/删除
@@ -285,12 +294,13 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 **设置与个性化**
 - [x] 所有设置持久化到 SharedPreferences（AppPreferences + StateFlow）
 - [x] 主题：跟随系统/浅色/深色，即时切换
-- [x] 语言：简体中文/English（values-en/strings.xml），LocaleHelper 运行时切换
-- [x] 剪贴板清理时长：15s/30s/60s/120s 可选
+- [x] 语言：简体中文/English，"跟随系统"已移除，默认 zh，English 暂不可用提示
 - [x] 生成器默认规则：长度+字符类型复选框，持久化
-- [x] 生物识别解锁（独立开关，检查系统录入状态）
+- [x] 生物识别解锁（独立开关，biometricEnabled 默认 false）
 - [x] 切后台锁定延时（独立设置）
 - [x] 修改主密码（验证当前密码 → 设置新密码）
+- [x] 密码显隐控制：MasterPasswordSetupScreen 双密码字段、导出对话框、MasterPasswordDialog 三字段全部支持眼睛图标切换
+- [x] 设置页剪贴板清理行及 ClipboardBottomSheet 已删除
 
 **密码输入掩码**
 - [x] 新增/编辑表单密码字段默认显示 ······，眼睛图标切换明暗文
@@ -336,6 +346,8 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 ### 已知问题
 
 - [ ] **底部导航栏上方白条**：NavigationBar 与内容区域之间存在约 16-20dp 宽的白条，底色为白色/浅灰。已尝试：themes.xml windowBackground/navigationBarColor、NavigationBar windowInsets、Scaffold contentWindowInsets。待进一步排查。
+- [ ] **English 本地化未完成**：所有 UI 文本为硬编码中文，语言切换仅影响系统组件，应用内仍显示中文
+- [ ] **Vivo 剪贴板历史无法清除**：Vivo OEM ROM 限制，ClipManager 的 IS_SENSITIVE 标记仅阻止其他应用读取，无法清空系统剪贴板历史
 
 ### 待开发
 - [ ] 密码过期提醒

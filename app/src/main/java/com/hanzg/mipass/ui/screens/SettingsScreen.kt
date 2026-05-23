@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -31,7 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -55,6 +57,8 @@ import com.hanzg.mipass.data.local.AppPreferences
 import com.hanzg.mipass.data.local.AppSettings
 import com.hanzg.mipass.data.local.PasswordDao
 import com.hanzg.mipass.data.local.SnapshotManager
+import com.hanzg.mipass.ui.navigation.MiPassBottomBar
+import com.hanzg.mipass.ui.navigation.NavRoutes
 import com.hanzg.mipass.utils.BiometricPromptManager
 import com.hanzg.mipass.utils.LocaleHelper
 import com.hanzg.mipass.utils.MasterPasswordManager
@@ -84,6 +88,7 @@ interface SettingsEntryPoint {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onNavigate: (String) -> Unit,
     pendingImportUri: Uri? = null,
     backupViewModel: BackupViewModel = hiltViewModel()
 ) {
@@ -170,17 +175,33 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("设置", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "个性化设置，管理您的密码安全",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            Column(modifier = Modifier.statusBarsPadding()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f))
+                        Text("设置", style = MaterialTheme.typography.titleMedium)
+                        Box(modifier = Modifier.weight(1f))
                     }
                 }
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+            }
+        },
+        bottomBar = {
+            MiPassBottomBar(
+                currentRoute = NavRoutes.Settings.route,
+                onNavigate = onNavigate
             )
         }
     ) { padding ->

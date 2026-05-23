@@ -132,6 +132,7 @@ class PasswordFormViewModel @Inject constructor(
     fun save(onSuccess: () -> Unit) {
         viewModelScope.launch {
             val state = _formState.value
+            if (state.name.isBlank() || state.password.isBlank()) return@launch
             val entity = PasswordEntity(
                 id = state.id ?: java.util.UUID.randomUUID().toString(),
                 type = state.type,

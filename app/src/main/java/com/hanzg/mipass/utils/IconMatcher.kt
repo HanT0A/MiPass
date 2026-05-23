@@ -1,6 +1,15 @@
 package com.hanzg.mipass.utils
 
+import android.content.Context
 import androidx.compose.ui.graphics.Color
+import java.util.concurrent.ConcurrentHashMap
+
+data class IconInfo(
+    val letter: String,
+    val color: Color,
+    val resName: String?,
+    val resId: Int = 0
+)
 
 object IconMatcher {
 
@@ -224,17 +233,47 @@ object IconMatcher {
         Color(0xFF8C5E4A), Color(0xFF5E548E), Color(0xFF2F6690), Color(0xFFC97D3A)
     )
 
+    private val resIdCache = ConcurrentHashMap<String, Int>()
+
+    fun getResId(resName: String?, context: Context): Int {
+        if (resName == null) return 0
+        return resIdCache.getOrPut(resName) {
+            context.resources.getIdentifier(resName, "drawable", context.packageName)
+        }
+    }
+
+    fun resolve(name: String): IconInfo {
+        if (name.isBlank()) return IconInfo("?", hashColors[0], null, 0)
+        return IconInfo(
+            letter = getIconLetterInternal(name),
+            color = getIconColorInternal(name),
+            resName = getIconResourceInternal(name)
+        )
+    }
+
+    fun resolveWithContext(name: String, context: Context): IconInfo {
+        val info = resolve(name)
+        return info.copy(resId = getResId(info.resName, context))
+    }
+
     /** 返回匹配到的品牌图标资源名，未匹配返回 null */
-    fun getIconResource(name: String): String? {
+    fun getIconResource(name: String): String? = getIconResourceInternal(name)
+
+    private fun getIconResourceInternal(name: String): String? {
         if (name.isBlank()) return null
         val lower = name.trim().lowercase()
-        brandIconMap.entries.forEach { (key, res) ->
+        // Phase 1: O(1) direct token lookup (handles "微信", "google", etc.)
+        brandIconMap[lower]?.let { return it }
+        // Phase 2: O(n) substring fallback (handles "企业微信", "Google Drive", etc.)
+        for ((key, res) in brandIconMap) {
             if (lower.contains(key)) return res
         }
         return null
     }
 
-    fun getIconLetter(name: String): String {
+    fun getIconLetter(name: String): String = getIconLetterInternal(name)
+
+    private fun getIconLetterInternal(name: String): String {
         if (name.isBlank()) return "?"
         val first = name.trim().first()
         return when {
@@ -249,10 +288,15 @@ object IconMatcher {
         }
     }
 
-    fun getIconColor(name: String): Color {
+    fun getIconColor(name: String): Color = getIconColorInternal(name)
+
+    private fun getIconColorInternal(name: String): Color {
         if (name.isBlank()) return hashColors[0]
         val lower = name.trim().lowercase()
-        brandColors.entries.forEach { (key, color) ->
+        // Phase 1: O(1) direct key lookup
+        brandColors[lower]?.let { return it }
+        // Phase 2: O(n) substring fallback
+        for ((key, color) in brandColors) {
             if (lower.contains(key)) return color
         }
         val hash = name.hashCode()

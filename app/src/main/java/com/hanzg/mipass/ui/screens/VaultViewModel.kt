@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.hanzg.mipass.data.local.PasswordEntity
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.repository.PasswordRepository
-import com.hanzg.mipass.domain.usecase.GetPasswordTreeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,8 +31,7 @@ data class VaultUiState(
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
-    private val repository: PasswordRepository,
-    private val getPasswordTreeUseCase: GetPasswordTreeUseCase
+    private val repository: PasswordRepository
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -43,15 +41,36 @@ class VaultViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<VaultUiState> = combine(
         repository.getAllPasswordsFlow(),
-        getPasswordTreeUseCase.buildFlatList(_searchQuery, _selectedCategory, _filterType)
-    ) { allData, flatList ->
-        val typeFiltered = _filterType.value?.let { t -> allData.filter { it.type == t } } ?: allData
+        _searchQuery,
+        _selectedCategory,
+        _filterType
+    ) { allData, query, category, type ->
+        val typeFiltered = if (type != null) {
+            allData.filter { it.type == type }
+        } else allData
+
+        val categoryFiltered = if (category == "全部") {
+            typeFiltered
+        } else {
+            typeFiltered.filter { it.category == category }
+        }
+
+        val flatList = if (query.isBlank()) {
+            categoryFiltered
+        } else {
+            val lowerQuery = query.lowercase()
+            categoryFiltered.filter {
+                it.name.lowercase().contains(lowerQuery) ||
+                        it.account.lowercase().contains(lowerQuery)
+            }
+        }
+
         VaultUiState(
             flatList = flatList,
-            categories = getPasswordTreeUseCase.getDistinctCategories(typeFiltered),
-            searchQuery = _searchQuery.value,
-            selectedCategory = _selectedCategory.value,
-            filterType = _filterType.value ?: EntryType.APP,
+            categories = listOf("全部") + typeFiltered.map { it.category }.distinct().sorted(),
+            searchQuery = query,
+            selectedCategory = category,
+            filterType = type ?: EntryType.APP,
             isLoading = false,
             isEmpty = flatList.isEmpty()
         )
@@ -63,7 +82,7 @@ class VaultViewModel @Inject constructor(
     .flowOn(Dispatchers.IO)
     .stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = VaultUiState(isLoading = true)
     )
 

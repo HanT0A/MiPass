@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import android.os.PersistableBundle
+import android.widget.Toast
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,5 +26,6 @@ class ClipboardUtils @Inject constructor(
             }
         }
         clipboardManager.setPrimaryClip(clip)
+        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
     }
 }

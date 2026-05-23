@@ -32,8 +32,8 @@ val LightSurface = Color.White
 val LightSurfaceVariant = Color(0xFFF0F1F5)
 val LightSurfaceContainerLow = Color(0xFFEEF0F5)
 val LightSurfaceContainer = Color(0xFFE8EAF2)
-val LightSurfaceContainerHigh = Color(0xFFE2E5ED)
-val LightSurfaceContainerHighest = Color(0xFFDCE0E8)
+val LightSurfaceContainerHigh = Color.White
+val LightSurfaceContainerHighest = Color.White
 
 // ── Dark Surface ──
 val DarkBackground = Color(0xFF0C0E12)

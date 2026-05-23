@@ -4,6 +4,10 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,8 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +52,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -74,6 +80,7 @@ fun PasswordDetailScreen(
     var showEditSheet by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var moreExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(passwordId) {
         viewModel.loadPassword(passwordId)
@@ -101,7 +108,8 @@ fun PasswordDetailScreen(
         )
     }
 
-    Scaffold(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("密码详情") },
@@ -111,6 +119,64 @@ fun PasswordDetailScreen(
                             imageVector = PhosphorIcons.Regular.ArrowLeft,
                             contentDescription = "返回"
                         )
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { moreExpanded = true }) {
+                            Icon(
+                                imageVector = PhosphorIcons.Regular.DotsThreeVertical,
+                                contentDescription = "更多操作"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = moreExpanded,
+                            onDismissRequest = { moreExpanded = false },
+                            containerColor = Color.White,
+                            tonalElevation = 0.dp,
+                            shape = RoundedCornerShape(12.dp),
+                            shadowElevation = 4.dp,
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            PhosphorIcons.Regular.PencilSimple,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text("编辑")
+                                    }
+                                },
+                                onClick = {
+                                    moreExpanded = false
+                                    showEditSheet = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            PhosphorIcons.Regular.TrashSimple,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text("删除", color = MaterialTheme.colorScheme.error)
+                                    }
+                                },
+                                onClick = {
+                                    moreExpanded = false
+                                    showDeleteConfirm = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                            )
+                        }
                     }
                 }
             )
@@ -181,7 +247,17 @@ fun PasswordDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = entity.name,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Info card
             Surface(
@@ -191,9 +267,6 @@ fun PasswordDetailScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    DetailRow("名称", entity.name)
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     if (entity.type == EntryType.WEB && !entity.url.isNullOrBlank()) {
                         DetailRow("URL", entity.url) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -282,35 +355,22 @@ fun PasswordDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
 
-            Button(
-                onClick = { showEditSheet = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.PencilSimple,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("编辑此记录")
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            TextButton(
-                onClick = { showDeleteConfirm = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.TrashSimple,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("删除此记录", color = MaterialTheme.colorScheme.error)
+        // Scrim when more dropdown is open
+        if (moreExpanded) {
+            Popup {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.32f))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { moreExpanded = false }
+                ) {
+                }
             }
         }
     }

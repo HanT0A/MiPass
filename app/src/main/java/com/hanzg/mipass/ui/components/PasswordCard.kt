@@ -1,20 +1,26 @@
 package com.hanzg.mipass.ui.components
 
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +42,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.adamglin.PhosphorIcons
@@ -51,16 +59,15 @@ fun PasswordCard(
     onCardClick: () -> Unit,
     onCopyAccount: (String) -> Unit,
     onCopyPassword: (String) -> Unit,
-    onMoreClick: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onCopyUrl: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
-    val iconLetter = IconMatcher.getIconLetter(entity.name)
-    val iconColor = IconMatcher.getIconColor(entity.name)
-    val iconResName = IconMatcher.getIconResource(entity.name)
+    val iconInfo = remember(entity.name, context) { IconMatcher.resolveWithContext(entity.name, context) }
 
     Surface(
         modifier = modifier
@@ -73,16 +80,14 @@ fun PasswordCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧图标
             Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .padding(top = 4.dp)
-                    .align(Alignment.Top),
+                modifier = Modifier.size(36.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = iconColor.copy(alpha = 0.12f)
+                color = iconInfo.color.copy(alpha = 0.12f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (!entity.iconUri.isNullOrBlank()) {
@@ -93,43 +98,40 @@ fun PasswordCard(
                                 .build(),
                             contentDescription = entity.name,
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp)),
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp)),
                             contentScale = ContentScale.Crop
                         )
-                    } else if (iconResName != null) {
-                        val resId = context.resources.getIdentifier(
-                            iconResName, "drawable", context.packageName
-                        )
-                        if (resId != 0) {
+                    } else if (iconInfo.resName != null) {
+                        if (iconInfo.resId != 0) {
                             Icon(
-                                painter = painterResource(id = resId),
+                                painter = painterResource(id = iconInfo.resId),
                                 contentDescription = entity.name,
-                                tint = iconColor,
+                                tint = iconInfo.color,
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
                             Text(
-                                text = iconLetter,
+                                text = iconInfo.letter,
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = iconColor
+                                color = iconInfo.color
                             )
                         }
                     } else {
                         Text(
-                            text = iconLetter,
+                            text = iconInfo.letter,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = iconColor
+                            color = iconInfo.color
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
             // 右侧内容
             Column(modifier = Modifier.weight(1f)) {
@@ -144,22 +146,93 @@ fun PasswordCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    if (onMoreClick != null) {
-                        IconButton(
-                            onClick = onMoreClick,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = PhosphorIcons.Regular.DotsThreeVertical,
-                                contentDescription = "更多操作",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    if (onEdit != null || onDelete != null) {
+                        var moreExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            // Scrim
+                            if (moreExpanded) {
+                                Popup {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.32f))
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() }
+                                            ) { moreExpanded = false }
+                                    ) {
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = { moreExpanded = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = PhosphorIcons.Regular.DotsThreeVertical,
+                                    contentDescription = "更多操作",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = moreExpanded,
+                                onDismissRequest = { moreExpanded = false },
+                                containerColor = Color.White,
+                                tonalElevation = 0.dp,
+                                shape = RoundedCornerShape(16.dp),
+                                shadowElevation = 4.dp,
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                if (onEdit != null) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    PhosphorIcons.Regular.PencilSimple,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text("编辑")
+                                            }
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            onEdit()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                                    )
+                                }
+                                if (onDelete != null) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    PhosphorIcons.Regular.TrashSimple,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = MaterialTheme.colorScheme.error
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    "删除",
+                                                    color = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            onDelete()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(2.dp))
 
                 // 第二行：账号
                 Row(verticalAlignment = Alignment.CenterVertically) {

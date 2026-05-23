@@ -3,15 +3,23 @@ package com.hanzg.mipass.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,26 +27,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.widget.Toast
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.adamglin.PhosphorIcons
@@ -69,7 +71,7 @@ import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.usecase.GeneratePasswordUseCase
 import com.hanzg.mipass.utils.IconMatcher
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EditPasswordBottomSheet(
     entity: PasswordEntity,
@@ -79,55 +81,87 @@ fun EditPasswordBottomSheet(
     viewModel: PasswordFormViewModel = hiltViewModel()
 ) {
     val state by viewModel.formState.collectAsState()
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
+    val context = LocalContext.current
     LaunchedEffect(entity.id) {
         viewModel.loadForEdit(entity.id)
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = MaterialTheme.shapes.large
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Column(
+        // Scrim
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onDismiss() }
+        )
+        // 固定弹窗 — 定位底部，内容内部滚动
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
+                .fillMaxHeight(0.67f),
+            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+            color = Color.White
         ) {
-            // 标题行
-            Box(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.CenterStart)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 固定标题行
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(
-                        PhosphorIcons.Regular.X,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    ) {
+                        Icon(
+                            PhosphorIcons.Regular.X,
+                            contentDescription = "取消",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = "编辑",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.align(Alignment.Center)
                     )
-                    Text("取消")
+                    IconButton(
+                        onClick = {
+                            if (state.name.isBlank()) {
+                                Toast.makeText(context, "名称为必填项", Toast.LENGTH_SHORT).show()
+                                return@IconButton
+                            }
+                            viewModel.save { onSaved() }
+                        },
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    ) {
+                        Icon(
+                            PhosphorIcons.Regular.Check,
+                            contentDescription = "保存",
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
-                Text(
-                    text = "编辑记录",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                TextButton(
-                    onClick = { viewModel.save { onSaved() } },
-                    modifier = Modifier.align(Alignment.CenterEnd)
+
+                // 可滚动内容
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .imePadding()
                 ) {
-                    Text("保存")
-                }
-            }
+                    Spacer(modifier = Modifier.height(4.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 图标
+                    // 图标
             val editIconPickerLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
@@ -138,9 +172,9 @@ fun EditPasswordBottomSheet(
             val iconLetter = IconMatcher.getIconLetter(state.name.ifBlank { "?" })
             val iconColor = IconMatcher.getIconColor(state.name.ifBlank { "?" })
             val iconResName = IconMatcher.getIconResource(state.name.ifBlank { "?" })
-            val context = LocalContext.current
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
@@ -310,7 +344,9 @@ fun EditPasswordBottomSheet(
 
                 DropdownMenu(
                     expanded = genExpanded,
-                    onDismissRequest = { genExpanded = false }
+                    onDismissRequest = { genExpanded = false },
+                    containerColor = Color.White,
+                    tonalElevation = 0.dp
                 ) {
                     DropdownMenuItem(
                         text = {
@@ -372,51 +408,14 @@ fun EditPasswordBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Button(
-                onClick = { showDeleteConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.TrashSimple,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("删除当前记录")
+                Spacer(modifier = Modifier.height(32.dp))
+                }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("确认删除") },
-            text = { Text("此操作不可撤销，确定要删除「${state.name}」吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.delete { onDelete() }
-                        showDeleteConfirm = false
-                    }
-                ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryDropdownField(
     value: String,
@@ -426,32 +425,34 @@ fun CategoryDropdownField(
     var expanded by remember { mutableStateOf(false) }
     val filtered = categories.filter { it.isNotBlank() }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text("分类") },
             placeholder = { Text("如：社交、工作") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(),
+            modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             trailingIcon = {
-                Icon(
-                    PhosphorIcons.Regular.CaretDown,
-                    contentDescription = "选择分类",
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = { expanded = true }) {
+                    Icon(
+                        PhosphorIcons.Regular.CaretDown,
+                        contentDescription = "选择分类",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         )
         if (filtered.isNotEmpty()) {
-            ExposedDropdownMenu(
+            DropdownMenu(
                 expanded = expanded,
-                onDismissRequest = { expanded = false }
+                onDismissRequest = { expanded = false },
+                containerColor = Color.White,
+                tonalElevation = 0.dp,
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 4.dp,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 filtered.forEach { category ->
                     DropdownMenuItem(
@@ -460,7 +461,7 @@ fun CategoryDropdownField(
                             onValueChange(category)
                             expanded = false
                         },
-                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
                     )
                 }
             }

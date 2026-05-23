@@ -31,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
@@ -56,7 +57,9 @@ fun ThemeBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.large,
+        containerColor = Color.White,
+        tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(
@@ -94,7 +97,9 @@ fun LanguageBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.large,
+        containerColor = Color.White,
+        tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(
@@ -171,7 +176,9 @@ fun SnapshotBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.large,
+        containerColor = Color.White,
+        tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(
@@ -300,7 +307,9 @@ fun LockTimeoutBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.large,
+        containerColor = Color.White,
+        tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(

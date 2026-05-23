@@ -3,9 +3,11 @@ package com.hanzg.mipass.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +26,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,13 +50,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import android.widget.Toast
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
@@ -72,32 +79,116 @@ fun AddPasswordScreen(
     viewModel: PasswordFormViewModel = hiltViewModel()
 ) {
     val state by viewModel.formState.collectAsState()
-    val title = "新增密码"
-
+    val context = LocalContext.current
+    var typeExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(entryType) {
         viewModel.initializeForNew(EntryType.valueOf(entryType))
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = PhosphorIcons.Regular.ArrowLeft,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = { viewModel.save { onNavigateBack() } }
+            Surface(
+                modifier = Modifier.fillMaxWidth().statusBarsPadding(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("保存")
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                PhosphorIcons.Regular.ArrowLeft,
+                                contentDescription = "返回",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        "新增",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 类型切换
+                            Box {
+                                IconButton(
+                                    onClick = { typeExpanded = true },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (state.type == EntryType.APP)
+                                            PhosphorIcons.Regular.DeviceMobile
+                                        else PhosphorIcons.Regular.Globe,
+                                        contentDescription = "切换类型",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = typeExpanded,
+                                    onDismissRequest = { typeExpanded = false },
+                                    containerColor = Color.White,
+                                    tonalElevation = 0.dp,
+                                    shape = RoundedCornerShape(16.dp),
+                                    shadowElevation = 4.dp,
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(PhosphorIcons.Regular.DeviceMobile, null, Modifier.size(20.dp),
+                                                    tint = if (state.type == EntryType.APP) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("App", color = if (state.type == EntryType.APP) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        },
+                                        onClick = { viewModel.onTypeChanged(EntryType.APP); typeExpanded = false }
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(PhosphorIcons.Regular.Globe, null, Modifier.size(20.dp),
+                                                    tint = if (state.type == EntryType.WEB) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Web", color = if (state.type == EntryType.WEB) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        },
+                                        onClick = { viewModel.onTypeChanged(EntryType.WEB); typeExpanded = false }
+                                    )
+                                }
+                            }
+                            // 保存
+                            IconButton(
+                                onClick = {
+                                    if (state.name.isBlank()) {
+                                        Toast.makeText(context, "名称为必填项", Toast.LENGTH_SHORT).show()
+                                        return@IconButton
+                                    }
+                                    if (state.password.isBlank()) {
+                                        Toast.makeText(context, "密码不能为空", Toast.LENGTH_SHORT).show()
+                                        return@IconButton
+                                    }
+                                    viewModel.save { onNavigateBack() }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    PhosphorIcons.Regular.Check,
+                                    contentDescription = "保存",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
-            )
+            }
         }
     ) { padding ->
         Column(
@@ -107,23 +198,7 @@ fun AddPasswordScreen(
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                FilterChip(
-                    selected = state.type == EntryType.APP,
-                    onClick = { viewModel.onTypeChanged(EntryType.APP) },
-                    label = { Text("App") }
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                FilterChip(
-                    selected = state.type == EntryType.WEB,
-                    onClick = { viewModel.onTypeChanged(EntryType.WEB) },
-                    label = { Text("Web") }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 图标 — 48dp touch target
             val iconPickerLauncher = rememberLauncherForActivityResult(
@@ -136,9 +211,9 @@ fun AddPasswordScreen(
             val iconLetter = IconMatcher.getIconLetter(state.name.ifBlank { "?" })
             val iconColor = IconMatcher.getIconColor(state.name.ifBlank { "?" })
             val iconResName = IconMatcher.getIconResource(state.name.ifBlank { "?" })
-            val context = LocalContext.current
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
@@ -312,7 +387,9 @@ fun AddPasswordScreen(
 
                 DropdownMenu(
                     expanded = genExpanded,
-                    onDismissRequest = { genExpanded = false }
+                    onDismissRequest = { genExpanded = false },
+                    containerColor = Color.White,
+                    tonalElevation = 0.dp
                 ) {
                     DropdownMenuItem(
                         text = {
