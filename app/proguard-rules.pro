@@ -59,3 +59,7 @@
     public static int d(...);
     public static int i(...);
 }
+
+# === Compose Runtime (additional) ===
+-keep class androidx.compose.runtime.** { *; }
+-dontwarn androidx.compose.runtime.**
