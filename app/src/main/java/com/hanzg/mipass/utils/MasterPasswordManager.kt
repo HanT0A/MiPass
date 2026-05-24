@@ -36,6 +36,7 @@ class MasterPasswordManager @Inject constructor(
 
         private val LOCKOUT_TIERS = intArrayOf(3, 6, 10, 20)
         private val LOCKOUT_SECONDS = longArrayOf(30, 120, 600, 3600)
+        private val secureRandom = SecureRandom()
     }
 
     fun hasMasterPassword(): Boolean {
@@ -44,7 +45,7 @@ class MasterPasswordManager @Inject constructor(
 
     fun setMasterPassword(password: String): SetResult {
         if (!isPasswordValid(password)) return SetResult.TooWeak
-        val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
+        val salt = ByteArray(SALT_LENGTH).also { secureRandom.nextBytes(it) }
         val hash = hashPassword(password, salt)
         prefs.edit()
             .putString(KEY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
@@ -159,8 +160,7 @@ class MasterPasswordManager @Inject constructor(
 
     private fun getBootId(): String {
         return try {
-            val cmd = Runtime.getRuntime().exec(arrayOf("/system/bin/cat", "/proc/sys/kernel/random/boot_id"))
-            cmd.inputStream.bufferedReader().readText().trim()
+            java.io.File("/proc/sys/kernel/random/boot_id").readText().trim()
         } catch (_: Exception) { "unknown" }
     }
 
