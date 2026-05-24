@@ -170,6 +170,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             result is com.hanzg.mipass.utils.BiometricResult.Ready &&
             !masterPasswordManager.shouldRequireMasterPassword()) {
             authState = AuthState.BIOMETRIC
+            showPrivacyOverlay()
             val myGen = ++biometricGeneration
 
             try {
