@@ -28,6 +28,13 @@ abstract class MiPassDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: MiPassDatabase? = null
 
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
+
         private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE password_entries ADD COLUMN icon_uri TEXT")
