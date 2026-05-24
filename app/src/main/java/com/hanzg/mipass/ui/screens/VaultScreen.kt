@@ -217,7 +217,7 @@ fun VaultScreen(
                                                 Column(
                                                     modifier = Modifier
                                                         .width(120.dp)
-                                                        .heightIn(max = 200.dp)
+                                                        .height(200.dp)
                                                         .verticalScroll(rememberScrollState())
                                                 ) {
                                                     catOptions.forEach { cat ->

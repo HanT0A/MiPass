@@ -435,30 +435,28 @@ fun CategoryDropdownField(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.width(120.dp).heightIn(max = 200.dp),
+                modifier = Modifier.width(120.dp).height(200.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 0.dp,
                 shape = RoundedCornerShape(12.dp),
                 shadowElevation = 4.dp,
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    filtered.forEach { category ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    category,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            onClick = {
-                                onValueChange(category)
-                                expanded = false
-                            },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
+                filtered.forEach { category ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                category,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        onClick = {
+                            onValueChange(category)
+                            expanded = false
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    )
                 }
             }
         }
