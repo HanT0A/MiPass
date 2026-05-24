@@ -52,7 +52,9 @@ fun MasterPasswordSetupScreen(
     masterPasswordManager: MasterPasswordManager,
     onSetupComplete: () -> Unit,
     onUnlockSuccess: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    onBiometricAuth: (() -> Unit)? = null,
+    showBiometricHint: Boolean = false
 ) {
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -222,6 +224,31 @@ fun MasterPasswordSetupScreen(
         }
 
         if (!isSetup) {
+            if (onBiometricAuth != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onBiometricAuth,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = PhosphorIcons.Regular.Fingerprint,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("使用指纹/面容解锁")
+                }
+            }
+            if (showBiometricHint) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "可到设置 → 安全设置 → 生物识别解锁 中开启",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
                 Text("退出应用", color = MaterialTheme.colorScheme.error)

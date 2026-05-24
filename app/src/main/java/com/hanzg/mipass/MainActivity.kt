@@ -21,6 +21,7 @@ import com.hanzg.mipass.ui.screens.MasterPasswordScreenMode
 import com.hanzg.mipass.ui.screens.MasterPasswordSetupScreen
 import com.hanzg.mipass.ui.theme.MiPassTheme
 import com.hanzg.mipass.utils.BiometricPromptManager
+import com.hanzg.mipass.utils.BiometricResult
 import com.hanzg.mipass.utils.KeyStoreManager
 import com.hanzg.mipass.utils.LocaleHelper
 import com.hanzg.mipass.utils.AuthState
@@ -241,6 +242,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private fun renderSetupScreen(mode: MasterPasswordScreenMode) {
         val mgr = masterPasswordManager
         val prefsRef = prefs
+        val bioManager = biometricPromptManager
+        val shouldRequirePwd = mgr.shouldRequireMasterPassword()
+        val bioEnabled = runBlocking {
+            try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
+            catch (_: Exception) { false }
+        }
+        val bioCapable = bioManager.canAuthenticate() is BiometricResult.Ready
+        val canRetryBio = mode == MasterPasswordScreenMode.UNLOCK && bioEnabled && bioCapable && !shouldRequirePwd
+        val showHint = mode == MasterPasswordScreenMode.UNLOCK && bioCapable && !bioEnabled
         setContent {
             MiPassTheme(themeMode = prefsRef?.let {
                 val settings by it.settingsFlow.collectAsState(initial = AppSettings())
@@ -264,7 +274,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         mgr.recordFingerprintDbHash()
                         renderContent()
                     },
-                    onExit = { finish() }
+                    onExit = { finish() },
+                    onBiometricAuth = if (canRetryBio) { { performBiometricAuth() } } else null,
+                    showBiometricHint = showHint
                 )
             }
         }
