@@ -1,5 +1,6 @@
 package com.hanzg.mipass.data.local
 
+import androidx.compose.runtime.Immutable
 import android.content.Context
 import android.content.SharedPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@Immutable
 data class AppSettings(
     val themeMode: String = "system",
     val language: String = "zh",

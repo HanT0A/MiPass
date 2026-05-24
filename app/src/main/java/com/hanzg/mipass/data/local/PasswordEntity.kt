@@ -1,5 +1,6 @@
 package com.hanzg.mipass.data.local
 
+import androidx.compose.runtime.Immutable
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -7,6 +8,7 @@ import com.hanzg.mipass.domain.model.EntryType
 import java.util.UUID
 
 @Entity(tableName = "password_entries")
+@Immutable
 data class PasswordEntity(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),

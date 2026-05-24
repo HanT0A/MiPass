@@ -1,6 +1,7 @@
 package com.hanzg.mipass.ui.screens
 
 import android.util.Log
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hanzg.mipass.data.local.PasswordEntity
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class VaultUiState(
     val flatList: List<PasswordEntity> = emptyList(),
     val categories: List<String> = listOf("全部"),
