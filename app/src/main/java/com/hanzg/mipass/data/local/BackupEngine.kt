@@ -46,6 +46,7 @@ class BackupEngine @Inject constructor() {
         private const val MIPASS_PREFIX = "MiPass_Backup_"
         private const val MIPASS_EXTENSION = ".mipass"
         private const val MIME_TYPE = "application/octet-stream"
+        private val secureRandom = SecureRandom()
     }
 
     /**
@@ -60,7 +61,7 @@ class BackupEngine @Inject constructor() {
         passcode: String
     ): ExportResult = withContext(Dispatchers.IO) {
         val json = serializeToJson(entries)
-        val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
+        val salt = ByteArray(SALT_LENGTH).also { secureRandom.nextBytes(it) }
         val aesKey = deriveKey(passcode, salt)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, aesKey)
@@ -177,21 +178,35 @@ class BackupEngine @Inject constructor() {
         val jsonArray = JSONArray(json)
         val result = mutableListOf<PasswordEntity>()
         for (i in 0 until jsonArray.length()) {
-            val obj = jsonArray.getJSONObject(i)
-            result.add(
-                PasswordEntity(
-                    id = obj.optString("id", java.util.UUID.randomUUID().toString()),
-                    type = EntryType.valueOf(obj.getString("entry_type")),
-                    name = obj.getString("name"),
-                    url = obj.optString("url", "").ifBlank { null },
-                    account = obj.getString("account"),
-                    password = obj.getString("password"),
-                    category = obj.getString("category"),
-                    notes = obj.optString("notes", ""),
-                    createdAt = obj.optLong("created_at", System.currentTimeMillis()),
-                    updatedAt = obj.optLong("updated_at", System.currentTimeMillis())
+            try {
+                val obj = jsonArray.getJSONObject(i)
+                val name = obj.optString("name", "")
+                val password = obj.optString("password", "")
+                val account = obj.optString("account", "")
+
+                if (name.isBlank() || password.isBlank() || account.isBlank()) {
+                    android.util.Log.w("BackupEngine", "跳过无效条目$i：缺少必填字段")
+                    continue
+                }
+
+                result.add(
+                    PasswordEntity(
+                        id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                        type = try { EntryType.valueOf(obj.getString("entry_type")) }
+                            catch (_: Exception) { EntryType.APP },
+                        name = name,
+                        url = obj.optString("url", "").ifBlank { null },
+                        account = account,
+                        password = password,
+                        category = obj.optString("category", "其他"),
+                        notes = obj.optString("notes", ""),
+                        createdAt = obj.optLong("created_at", System.currentTimeMillis()),
+                        updatedAt = obj.optLong("updated_at", System.currentTimeMillis())
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                android.util.Log.w("BackupEngine", "跳过格式错误条目$i: ${e.message}")
+            }
         }
         return result
     }
