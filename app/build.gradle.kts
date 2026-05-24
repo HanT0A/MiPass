@@ -132,6 +132,9 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // Baseline Profile (JIT 预热优化)
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+
     // Unit Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

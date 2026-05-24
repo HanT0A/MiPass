@@ -404,10 +404,9 @@ fun VaultScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(
-                        count = state.flatList.size,
-                        key = { state.flatList[it].id }
-                    ) { index ->
-                        val item = state.flatList[index]
+                        items = state.flatList,
+                        key = { it.id }
+                    ) { item ->
                         PasswordCard(
                             entity = item,
                             onCardClick = { onNavigateToDetail(item.id) },
