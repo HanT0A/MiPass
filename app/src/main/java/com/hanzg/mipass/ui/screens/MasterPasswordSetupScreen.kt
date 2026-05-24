@@ -1,7 +1,7 @@
 package com.hanzg.mipass.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.material3.IconButton
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,7 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,8 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
@@ -43,6 +42,7 @@ import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.*
 import com.hanzg.mipass.utils.MasterPasswordManager
 import com.hanzg.mipass.utils.SetResult
+import com.hanzg.mipass.ui.components.PasswordTextField
 
 enum class MasterPasswordScreenMode { SETUP, UNLOCK }
 
@@ -56,8 +56,7 @@ fun MasterPasswordSetupScreen(
 ) {
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
+
     var agreedRisk by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var lockoutRemaining by remember { mutableStateOf(0) }
@@ -118,21 +117,10 @@ fun MasterPasswordSetupScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        OutlinedTextField(
+        PasswordTextField(
             value = password,
             onValueChange = { password = it; error = null },
-            label = { Text(if (isSetup) "设置主密码" else "主密码") },
-            singleLine = true,
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
-                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            },
+            label = if (isSetup) "设置主密码" else "主密码",
             modifier = Modifier.fillMaxWidth(),
             enabled = lockoutRemaining == 0
         )
@@ -147,23 +135,11 @@ fun MasterPasswordSetupScreen(
 
         if (isSetup) {
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
+            PasswordTextField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it; error = null },
-                label = { Text("确认主密码") },
-                singleLine = true,
-                visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                        Icon(
-                            imageVector = if (confirmPasswordVisible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
-                            contentDescription = if (confirmPasswordVisible) "隐藏密码" else "显示密码",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = true
+                label = "确认主密码",
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(16.dp))

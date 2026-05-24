@@ -57,7 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.widget.Toast
@@ -70,6 +70,7 @@ import com.hanzg.mipass.data.local.PasswordEntity
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.usecase.GeneratePasswordUseCase
 import com.hanzg.mipass.utils.IconMatcher
+import com.hanzg.mipass.ui.components.PasswordTextField
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -269,7 +270,7 @@ fun EditPasswordBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            var passwordVisible by remember { mutableStateOf(false) }
+
             val haptic = LocalHapticFeedback.current
             val genDefaults by viewModel.generatorDefaults.collectAsState()
             var genLength by remember { mutableFloatStateOf(genDefaults.length) }
@@ -302,43 +303,27 @@ fun EditPasswordBottomSheet(
             }
 
             Box {
-                OutlinedTextField(
+                PasswordTextField(
                     value = state.password,
                     onValueChange = viewModel::onPasswordChanged,
-                    label = { Text("密码") },
+                    label = "密码",
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = if (passwordVisible) {
-                        androidx.compose.ui.text.input.VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = PhosphorIcons.Regular.Shuffle,
-                                contentDescription = "生成随机密码",
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .combinedClickable(
-                                        onClick = { doGenerate() },
-                                        onLongClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            genExpanded = true
-                                        }
-                                    ),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
-                                    imageVector = if (passwordVisible) PhosphorIcons.Regular.EyeSlash
-                                        else PhosphorIcons.Regular.Eye,
-                                    contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
+                    additionalTrailingIcons = {
+                        Icon(
+                            imageVector = PhosphorIcons.Regular.Shuffle,
+                            contentDescription = "生成随机密码",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .combinedClickable(
+                                    onClick = { doGenerate() },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        genExpanded = true
+                                    }
+                                ),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
                 )
 

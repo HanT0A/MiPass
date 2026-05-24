@@ -20,8 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -35,15 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+
 import androidx.compose.ui.unit.dp
-import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.regular.*
+
 import com.hanzg.mipass.data.local.AppSettings
 import com.hanzg.mipass.utils.BiometricPromptManager
 import com.hanzg.mipass.utils.SelfDestructManager
+import com.hanzg.mipass.ui.components.PasswordTextField
 
 @Composable
 fun GeneratorRuleDialog(
@@ -201,9 +198,7 @@ fun MasterPasswordDialog(
     var currentPwd by remember { mutableStateOf("") }
     var newPwd by remember { mutableStateOf("") }
     var confirmPwd by remember { mutableStateOf("") }
-    var currentPwdVisible by remember { mutableStateOf(false) }
-    var newPwdVisible by remember { mutableStateOf(false) }
-    var confirmPwdVisible by remember { mutableStateOf(false) }
+
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -212,58 +207,25 @@ fun MasterPasswordDialog(
         text = {
             Column {
                 if (hasPassword) {
-                    OutlinedTextField(
+                    PasswordTextField(
                         value = currentPwd,
                         onValueChange = { currentPwd = it; error = null },
-                        label = { Text("当前密码") },
-                        singleLine = true,
-                        visualTransformation = if (currentPwdVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { currentPwdVisible = !currentPwdVisible }) {
-                                Icon(
-                                    imageVector = if (currentPwdVisible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
-                                    contentDescription = if (currentPwdVisible) "隐藏密码" else "显示密码",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        },
+                        label = "当前密码",
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
-                OutlinedTextField(
+                PasswordTextField(
                     value = newPwd,
                     onValueChange = { newPwd = it; error = null },
-                    label = { Text("新密码") },
-                    singleLine = true,
-                    visualTransformation = if (newPwdVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { newPwdVisible = !newPwdVisible }) {
-                            Icon(
-                                imageVector = if (newPwdVisible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
-                                contentDescription = if (newPwdVisible) "隐藏密码" else "显示密码",
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    },
+                    label = "新密码",
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
+                PasswordTextField(
                     value = confirmPwd,
                     onValueChange = { confirmPwd = it; error = null },
-                    label = { Text("确认新密码") },
-                    singleLine = true,
-                    visualTransformation = if (confirmPwdVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { confirmPwdVisible = !confirmPwdVisible }) {
-                            Icon(
-                                imageVector = if (confirmPwdVisible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
-                                contentDescription = if (confirmPwdVisible) "隐藏密码" else "显示密码",
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    },
+                    label = "确认新密码",
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (error != null) {
