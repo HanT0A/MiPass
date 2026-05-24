@@ -115,6 +115,7 @@ fun SettingsScreen(
 
     var showExportVerify by remember { mutableStateOf(false) }
     var showExportMasterPwd by remember { mutableStateOf(false) }
+    var bioRetryKey by remember { mutableStateOf(0) }
     var showExportDisclaimer by remember { mutableStateOf(false) }
     var showExportPasscode by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
@@ -470,7 +471,7 @@ fun SettingsScreen(
     // === Export flow ===
 
     if (showExportVerify) {
-        LaunchedEffect(Unit) {
+        LaunchedEffect(bioRetryKey) {
             if (settings.biometricEnabled) {
                 val bioResult = biometricManager.canAuthenticate()
                 if (bioResult is BiometricResult.Ready) {
@@ -479,7 +480,10 @@ fun SettingsScreen(
                         title = "验证身份",
                         subtitle = "导出数据前需要验证身份",
                         onSuccess = { showExportVerify = false; showExportDisclaimer = true },
-                        onError = { _, _ -> showExportVerify = false; showExportMasterPwd = true },
+                        onError = { code, _ ->
+                            showExportVerify = false
+                            if (code == 13) showExportMasterPwd = true
+                        },
                         onFailed = { }
                     )
                 } else {
@@ -496,47 +500,14 @@ fun SettingsScreen(
     if (showExportMasterPwd) {
         var pwd by remember { mutableStateOf("") }
         var pwdError by remember { mutableStateOf<String?>(null) }
-        val bioReady = settings.biometricEnabled &&
+        val canSwitchBio = settings.biometricEnabled &&
             biometricManager.canAuthenticate() is BiometricResult.Ready
         AlertDialog(
             onDismissRequest = { showExportMasterPwd = false },
-            title = { Text("验证身份") },
+            title = { Text("验证主密码") },
             text = {
                 Column {
-                    Text("导出数据前需要验证身份", style = MaterialTheme.typography.bodyMedium)
-                    if (bioReady) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                biometricManager.showPrompt(
-                                    activity = context as androidx.fragment.app.FragmentActivity,
-                                    title = "验证身份",
-                                    subtitle = "导出数据前需要验证身份",
-                                    onSuccess = {
-                                        showExportMasterPwd = false
-                                        showExportDisclaimer = true
-                                    },
-                                    onError = { _, _ -> showExportMasterPwd = false },
-                                    onFailed = { }
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                PhosphorIcons.Regular.Fingerprint,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("使用指纹/面容解锁")
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "或使用主密码验证",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text("导出数据前需验证主密码", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(12.dp))
                     PasswordTextField(
                         value = pwd,
@@ -564,7 +535,24 @@ fun SettingsScreen(
                 }) { Text("确认") }
             },
             dismissButton = {
-                TextButton(onClick = { showExportMasterPwd = false }) { Text("取消") }
+                Row {
+                    if (canSwitchBio) {
+                        TextButton(onClick = {
+                            showExportMasterPwd = false
+                            bioRetryKey++
+                            showExportVerify = true
+                        }) {
+                            Icon(
+                                PhosphorIcons.Regular.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("指纹/面容")
+                        }
+                    }
+                    TextButton(onClick = { showExportMasterPwd = false }) { Text("取消") }
+                }
             }
         )
     }
