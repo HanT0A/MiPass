@@ -56,12 +56,17 @@ abstract class MiPassDatabase : RoomDatabase() {
                 val encB64 = prefs.getString(KEY_ENCRYPTED_DEK, null)
                 val ivB64 = prefs.getString(KEY_DEK_IV, null)
                 if (encB64 != null && ivB64 != null) {
-                    val migrated = keyStoreManager.migrateKEK(encB64, ivB64)
-                    if (migrated != null) {
-                        prefs.edit()
-                            .putString(KEY_ENCRYPTED_DEK, migrated.first)
-                            .putString(KEY_DEK_IV, migrated.second)
-                            .commit()
+                    try {
+                        val migrated = keyStoreManager.migrateKEK(encB64, ivB64)
+                        if (migrated != null) {
+                            prefs.edit()
+                                .putString(KEY_ENCRYPTED_DEK, migrated.first)
+                                .putString(KEY_DEK_IV, migrated.second)
+                                .commit()
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MiPassDatabase", "KEK migration failed, skipping", e)
+                        // 迁移失败不阻止数据库初始化
                     }
                 }
 

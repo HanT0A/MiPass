@@ -103,9 +103,10 @@ class KeyStoreManager @Inject constructor() {
         return try {
             val testCipher = Cipher.getInstance(TRANSFORMATION)
             testCipher.init(Cipher.ENCRYPT_MODE, oldKek)
-            true  // 无异常 → KEK 无用户认证绑定，需要迁移
+            testCipher.doFinal(ByteArray(16)) // 实际加密操作，auth 要求在此触发
+            true  // 成功 = 无认证要求 → 需要迁移
         } catch (_: Exception) {
-            false // 已有认证绑定
+            false // 失败 = 已有认证绑定 → 无需迁移
         }
     }
 
