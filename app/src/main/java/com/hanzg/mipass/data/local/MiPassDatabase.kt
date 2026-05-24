@@ -51,25 +51,6 @@ abstract class MiPassDatabase : RoomDatabase() {
 
         private fun buildDatabase(context: Context, keyStoreManager: KeyStoreManager): MiPassDatabase {
             return try {
-                // 迁移旧 KEK（无用户认证绑定）到新 KEK（绑定用户认证）
-                val prefs = createSecurePrefs(context)
-                val encB64 = prefs.getString(KEY_ENCRYPTED_DEK, null)
-                val ivB64 = prefs.getString(KEY_DEK_IV, null)
-                if (encB64 != null && ivB64 != null) {
-                    try {
-                        val migrated = keyStoreManager.migrateKEK(encB64, ivB64)
-                        if (migrated != null) {
-                            prefs.edit()
-                                .putString(KEY_ENCRYPTED_DEK, migrated.first)
-                                .putString(KEY_DEK_IV, migrated.second)
-                                .commit()
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("MiPassDatabase", "KEK migration failed, skipping", e)
-                        // 迁移失败不阻止数据库初始化
-                    }
-                }
-
                 val kek = keyStoreManager.getOrCreateKEK()
                 val dek = loadOrCreateDEK(context, keyStoreManager, kek)
                 val passphrase = Base64.encodeToString(dek, Base64.NO_WRAP)
