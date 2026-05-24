@@ -432,9 +432,9 @@ fun VaultScreen(
         }
     }
 
-    if (entityToEdit != null) {
+    entityToEdit?.let { entity ->
         EditPasswordBottomSheet(
-            entity = entityToEdit!!,
+            entity = entity,
             onDismiss = { entityToEdit = null },
             onDelete = {
                 entityToEdit?.let { viewModel.deletePassword(it) }
