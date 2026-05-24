@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -215,8 +216,8 @@ fun VaultScreen(
                                             ) {
                                                 Column(
                                                     modifier = Modifier
-                                                        .width(IntrinsicSize.Min)
-                                                        .heightIn(max = 240.dp)
+                                                        .width(120.dp)
+                                                        .heightIn(max = 200.dp)
                                                         .verticalScroll(rememberScrollState())
                                                 ) {
                                                     catOptions.forEach { cat ->
@@ -224,6 +225,8 @@ fun VaultScreen(
                                                             text = {
                                                                 Text(
                                                                     cat,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
                                                                     color = if (cat == state.selectedCategory)
                                                                         MaterialTheme.colorScheme.primary
                                                                     else MaterialTheme.colorScheme.onSurface

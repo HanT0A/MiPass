@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -433,21 +435,30 @@ fun CategoryDropdownField(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
+                modifier = Modifier.width(120.dp).heightIn(max = 200.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 0.dp,
                 shape = RoundedCornerShape(12.dp),
                 shadowElevation = 4.dp,
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                filtered.forEach { category ->
-                    DropdownMenuItem(
-                        text = { Text(category) },
-                        onClick = {
-                            onValueChange(category)
-                            expanded = false
-                        },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                    )
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    filtered.forEach { category ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    category,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            onClick = {
+                                onValueChange(category)
+                                expanded = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }
