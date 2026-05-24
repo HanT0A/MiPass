@@ -107,7 +107,7 @@ fun EditPasswordBottomSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.67f),
             shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // 固定标题行
@@ -330,7 +330,7 @@ fun EditPasswordBottomSheet(
                 DropdownMenu(
                     expanded = genExpanded,
                     onDismissRequest = { genExpanded = false },
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 0.dp
                 ) {
                     DropdownMenuItem(
@@ -433,7 +433,7 @@ fun CategoryDropdownField(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 0.dp,
                 shape = RoundedCornerShape(12.dp),
                 shadowElevation = 4.dp,

@@ -132,7 +132,7 @@ fun PasswordDetailScreen(
                         DropdownMenu(
                             expanded = moreExpanded,
                             onDismissRequest = { moreExpanded = false },
-                            containerColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 0.dp,
                             shape = RoundedCornerShape(12.dp),
                             shadowElevation = 4.dp,

@@ -59,7 +59,7 @@ fun MiPassBottomBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFFF8F9FB),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 0.dp
     ) {
         Row(
