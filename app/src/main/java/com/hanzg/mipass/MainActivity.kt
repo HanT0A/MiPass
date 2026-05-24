@@ -250,7 +250,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         val bioCapable = bioManager.canAuthenticate() is BiometricResult.Ready
         val canRetryBio = mode == MasterPasswordScreenMode.UNLOCK && bioEnabled && bioCapable && !shouldRequirePwd
-        val showHint = mode == MasterPasswordScreenMode.UNLOCK && bioCapable && !bioEnabled
         setContent {
             MiPassTheme(themeMode = prefsRef?.let {
                 val settings by it.settingsFlow.collectAsState(initial = AppSettings())
@@ -275,8 +274,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         renderContent()
                     },
                     onExit = { finish() },
-                    onBiometricAuth = if (canRetryBio) { { performBiometricAuth() } } else null,
-                    showBiometricHint = showHint
+                    onBiometricAuth = if (canRetryBio) { { performBiometricAuth() } } else null
                 )
             }
         }
@@ -380,6 +378,16 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     }
                 }
                 Lifecycle.Event.ON_START -> {
+                    // 同步系统生物识别状态：用户可能在设置中关闭了系统生物识别
+                    if (cachedBiometricEnabled) {
+                        val bioResult = biometricPromptManager.canAuthenticate()
+                        if (bioResult !is BiometricResult.Ready) {
+                            cachedBiometricEnabled = false
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                prefs?.setBiometricEnabled(false)
+                            }
+                        }
+                    }
                     // 导入/导出文件选择器回来后不验证
                     if (skipNextLockCheck) {
                         skipNextLockCheck = false

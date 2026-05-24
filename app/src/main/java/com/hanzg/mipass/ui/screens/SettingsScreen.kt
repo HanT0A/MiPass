@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
@@ -494,14 +495,48 @@ fun SettingsScreen(
 
     if (showExportMasterPwd) {
         var pwd by remember { mutableStateOf("") }
-
         var pwdError by remember { mutableStateOf<String?>(null) }
+        val bioReady = settings.biometricEnabled &&
+            biometricManager.canAuthenticate() is BiometricResult.Ready
         AlertDialog(
             onDismissRequest = { showExportMasterPwd = false },
-            title = { Text("验证主密码") },
+            title = { Text("验证身份") },
             text = {
                 Column {
-                    Text("导出数据前需验证主密码", style = MaterialTheme.typography.bodyMedium)
+                    Text("导出数据前需要验证身份", style = MaterialTheme.typography.bodyMedium)
+                    if (bioReady) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                biometricManager.showPrompt(
+                                    activity = context as androidx.fragment.app.FragmentActivity,
+                                    title = "验证身份",
+                                    subtitle = "导出数据前需要验证身份",
+                                    onSuccess = {
+                                        showExportMasterPwd = false
+                                        showExportDisclaimer = true
+                                    },
+                                    onError = { _, _ -> },
+                                    onFailed = { }
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                PhosphorIcons.Regular.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("使用指纹/面容解锁")
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "或使用主密码验证",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                     PasswordTextField(
                         value = pwd,
