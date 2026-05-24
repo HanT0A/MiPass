@@ -205,7 +205,7 @@ fun VaultScreen(
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(20.dp),
-                                                color = Color.White,
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                                 shadowElevation = 4.dp,
                                                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
                                             ) {
@@ -262,7 +262,7 @@ fun VaultScreen(
                                 DropdownMenu(
                             expanded = typeExpanded,
                             onDismissRequest = { typeExpanded = false },
-                            containerColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 0.dp,
                             shape = RoundedCornerShape(16.dp),
                             shadowElevation = 4.dp,

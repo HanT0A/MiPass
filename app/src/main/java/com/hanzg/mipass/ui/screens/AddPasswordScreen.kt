@@ -133,7 +133,7 @@ fun AddPasswordScreen(
                                 DropdownMenu(
                                     expanded = typeExpanded,
                                     onDismissRequest = { typeExpanded = false },
-                                    containerColor = Color.White,
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     tonalElevation = 0.dp,
                                     shape = RoundedCornerShape(16.dp),
                                     shadowElevation = 4.dp,
@@ -388,7 +388,7 @@ fun AddPasswordScreen(
                 DropdownMenu(
                     expanded = genExpanded,
                     onDismissRequest = { genExpanded = false },
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 0.dp
                 ) {
                     DropdownMenuItem(
