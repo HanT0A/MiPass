@@ -13,7 +13,8 @@ data class IconInfo(
 
 object IconMatcher {
 
-    // 品牌 → 图标资源名（res/drawable/ic_brand_*.xml）
+    // 品牌 → 图标资源名（res/drawable/ic_brand_*.xml，来自 Simple Icons CC0）
+    // 注：不在列表中的品牌自动回落首字母+品牌色
     private val brandIconMap: Map<String, String> = mapOf(
         // 国内主流
         "wechat" to "ic_brand_wechat", "微信" to "ic_brand_wechat",
@@ -23,21 +24,13 @@ object IconMatcher {
         "taobao" to "ic_brand_taobao", "淘宝" to "ic_brand_taobao",
         "weibo" to "ic_brand_weibo", "微博" to "ic_brand_weibo",
         "baidu" to "ic_brand_baidu", "百度" to "ic_brand_baidu",
-        "jd" to "ic_brand_jd", "京东" to "ic_brand_jd",
         "meituan" to "ic_brand_meituan", "美团" to "ic_brand_meituan",
         "zhihu" to "ic_brand_zhihu", "知乎" to "ic_brand_zhihu",
         "bilibili" to "ic_brand_bilibili", "b站" to "ic_brand_bilibili",
         "xiaohongshu" to "ic_brand_xiaohongshu", "小红书" to "ic_brand_xiaohongshu",
-        "pinduoduo" to "ic_brand_pinduoduo", "拼多多" to "ic_brand_pinduoduo",
         "kuaishou" to "ic_brand_kuaishou", "快手" to "ic_brand_kuaishou",
         "netease" to "ic_brand_netease", "网易" to "ic_brand_netease",
-        "dingtalk" to "ic_brand_dingtalk", "钉钉" to "ic_brand_dingtalk",
-        "eleme" to "ic_brand_eleme", "饿了么" to "ic_brand_eleme",
-        "didichuxing" to "ic_brand_didi", "滴滴" to "ic_brand_didi",
         "alibaba" to "ic_brand_alibaba", "阿里巴巴" to "ic_brand_alibaba",
-        "xianyu" to "ic_brand_xianyu", "闲鱼" to "ic_brand_xianyu",
-        "ctrip" to "ic_brand_ctrip", "携程" to "ic_brand_ctrip",
-        "amap" to "ic_brand_amap", "高德" to "ic_brand_amap", "高德地图" to "ic_brand_amap",
         // 国际主流
         "google" to "ic_brand_google",
         "gmail" to "ic_brand_gmail",
@@ -46,16 +39,12 @@ object IconMatcher {
         "instagram" to "ic_brand_instagram",
         "twitter" to "ic_brand_twitter", "x" to "ic_brand_twitter",
         "github" to "ic_brand_github",
-        "linkedin" to "ic_brand_linkedin",
         "apple" to "ic_brand_apple",
-        "microsoft" to "ic_brand_microsoft",
-        "amazon" to "ic_brand_amazon",
         "netflix" to "ic_brand_netflix",
         "spotify" to "ic_brand_spotify",
         "discord" to "ic_brand_discord",
         "telegram" to "ic_brand_telegram",
         "whatsapp" to "ic_brand_whatsapp",
-        "slack" to "ic_brand_slack",
         "notion" to "ic_brand_notion",
         "paypal" to "ic_brand_paypal",
         "dropbox" to "ic_brand_dropbox",
@@ -66,7 +55,6 @@ object IconMatcher {
         "twitch" to "ic_brand_twitch",
         "gitlab" to "ic_brand_gitlab",
         "figma" to "ic_brand_figma",
-        "canva" to "ic_brand_canva",
         "zoom" to "ic_brand_zoom",
         "airbnb" to "ic_brand_airbnb",
         "uber" to "ic_brand_uber",
