@@ -228,6 +228,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 else { removePrivacyOverlay(); renderSetupScreen(MasterPasswordScreenMode.UNLOCK) }
                             }
                             13 -> {
+                                isAutoBioCall = false
                                 removePrivacyOverlay()
                                 renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
                             }
@@ -296,7 +297,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         if (triggerBio) {
             isAutoBioCall = true
             performBiometricAuth()
-            isAutoBioCall = false
         }
     }
 
