@@ -145,18 +145,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
             catch (_: Exception) { false }
         }
-        authState = when {
-            !masterPasswordManager.hasMasterPassword() -> AuthState.OOBE
-            masterPasswordManager.shouldRequireMasterPassword() -> AuthState.UNLOCK
-            biometricEnabled -> AuthState.BIOMETRIC
-            else -> AuthState.UNLOCK
-        }
-
-        when (authState) {
-            AuthState.OOBE -> renderSetupScreen(MasterPasswordScreenMode.SETUP)
-            AuthState.UNLOCK -> renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
-            AuthState.BIOMETRIC -> performBiometricAuth()
-            AuthState.DONE -> renderContent()
+        when {
+            !masterPasswordManager.hasMasterPassword() -> {
+                authState = AuthState.OOBE
+                renderSetupScreen(MasterPasswordScreenMode.SETUP)
+            }
+            else -> {
+                authState = AuthState.UNLOCK
+                // 统一显示密码页，生物识别按钮由 renderSetupScreen 根据设置决定是否显示
+                removePrivacyOverlay()
+                renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+            }
         }
     }
 
@@ -216,11 +215,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     },
                     onError = { errorCode, _ ->
                         if (myGen != biometricGeneration) return@showPromptWithCrypto
-                        runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
+                        // 用户操作（取消/切换）不计入自毁次数
                         authState = AuthState.UNLOCK
                         when (errorCode) {
-                            10 -> finish() // 用户取消
-                            13 -> {
+                            10, 13 -> {
                                 removePrivacyOverlay()
                                 renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
                             }
@@ -228,6 +226,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     },
                     onFailed = {
                         if (myGen != biometricGeneration) return@showPromptWithCrypto
+                        // 仅指纹不匹配时计入自毁失败次数
                         runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
                     }
                 )
