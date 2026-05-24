@@ -56,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -141,6 +142,7 @@ fun VaultScreen(
                         Box {
                             Surface(
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(24.dp))
                                     .clickable { catExpanded = true }
                                     .onGloballyPositioned { anchorHeightPx = it.size.height },
                                 shape = RoundedCornerShape(24.dp),

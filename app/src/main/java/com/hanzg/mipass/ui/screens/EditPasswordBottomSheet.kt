@@ -183,6 +183,7 @@ fun EditPasswordBottomSheet(
                 Surface(
                     modifier = Modifier
                         .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { editIconPickerLauncher.launch("image/*") },
                     shape = RoundedCornerShape(8.dp),
                     color = iconColor.copy(alpha = 0.12f)
