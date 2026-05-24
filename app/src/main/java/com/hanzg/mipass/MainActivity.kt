@@ -75,6 +75,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private var authState: AuthState = AuthState.OOBE
     private var biometricGeneration = 0
     private var autoTriggerBio = true
+    private var isAutoBioCall = false
 
     private val mainEntryPoint by lazy {
         EntryPoints.get(applicationContext, MainActivityEntryPoint::class.java)
@@ -213,6 +214,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         authState = AuthState.DONE
                         hasAuthenticated = true
                         autoTriggerBio = true
+                        isAutoBioCall = false
                         removePrivacyOverlay()
                         renderContent()
                     },
@@ -221,7 +223,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         // 用户操作（取消/切换）不计入自毁次数
                         authState = AuthState.UNLOCK
                         when (errorCode) {
-                            10, 13 -> {
+                            10 -> {
+                                if (isAutoBioCall) finish()
+                                else { removePrivacyOverlay(); renderSetupScreen(MasterPasswordScreenMode.UNLOCK) }
+                            }
+                            13 -> {
                                 removePrivacyOverlay()
                                 renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
                             }
@@ -288,7 +294,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         // 首次显示密码页时自动触发生物识别（系统弹窗覆盖上方）
         if (triggerBio) {
+            isAutoBioCall = true
             performBiometricAuth()
+            isAutoBioCall = false
         }
     }
 
