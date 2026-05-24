@@ -470,27 +470,78 @@ fun SettingsScreen(
     // === Export flow ===
 
     if (showExportVerify) {
-        LaunchedEffect(Unit) {
-            if (settings.biometricEnabled) {
-                val bioResult = biometricManager.canAuthenticate()
-                if (bioResult is BiometricResult.Ready) {
-                    biometricManager.showPrompt(
-                        activity = context as androidx.fragment.app.FragmentActivity,
-                        title = "验证身份",
-                        subtitle = "导出数据前需要验证身份",
-                        onSuccess = { showExportVerify = false; showExportDisclaimer = true },
-                        onError = { _, _ -> showExportVerify = false; showExportMasterPwd = true },
-                        onFailed = { }
+        // 统一验证对话框：生物识别按钮 + 主密码输入，二者并行
+        var pwd by remember { mutableStateOf("") }
+        var pwdError by remember { mutableStateOf<String?>(null) }
+        val bioReady = settings.biometricEnabled &&
+            biometricManager.canAuthenticate() is BiometricResult.Ready
+        AlertDialog(
+            onDismissRequest = { showExportVerify = false },
+            title = { Text("验证身份") },
+            text = {
+                Column {
+                    Text("导出数据前需要验证身份", style = MaterialTheme.typography.bodyMedium)
+                    if (bioReady) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                showExportVerify = false // 先关闭对话框
+                                biometricManager.showPrompt(
+                                    activity = context as androidx.fragment.app.FragmentActivity,
+                                    title = "验证身份",
+                                    subtitle = "导出数据前需要验证身份",
+                                    onSuccess = { showExportDisclaimer = true },
+                                    onError = { _, _ -> /* 取消则不继续 */ },
+                                    onFailed = { }
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                PhosphorIcons.Regular.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("使用指纹/面容解锁")
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "或使用主密码验证",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    PasswordTextField(
+                        value = pwd,
+                        onValueChange = { pwd = it; pwdError = null },
+                        label = "主密码",
+                        modifier = Modifier.fillMaxWidth()
                     )
-                } else {
-                    showExportVerify = false
-                    showExportMasterPwd = true
+                    if (pwdError != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(pwdError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-            } else {
-                showExportVerify = false
-                showExportMasterPwd = true
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    when (val result = masterPasswordManager.verifyMasterPassword(pwd)) {
+                        is VerifyResult.Success -> {
+                            showExportVerify = false
+                            showExportDisclaimer = true
+                        }
+                        is VerifyResult.Failed -> pwdError = "密码错误"
+                        is VerifyResult.LockedOut -> pwdError = "已锁定 ${result.remainingSeconds} 秒"
+                        else -> pwdError = "验证失败"
+                    }
+                }) { Text("确认") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportVerify = false }) { Text("取消") }
             }
-        }
+        )
     }
 
     if (showExportMasterPwd) {
