@@ -44,6 +44,8 @@ class KeyStoreManager @Inject constructor() {
             .setKeySize(256)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setUserAuthenticationRequired(true)
+            .setUserAuthenticationValidityDurationSeconds(-1)
             .build()
 
         keyGenerator.init(spec)
@@ -86,5 +88,50 @@ class KeyStoreManager @Inject constructor() {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, kek, GCMParameterSpec(GCM_TAG_LENGTH, iv))
         return cipher
+    }
+
+    /**
+     * 检查现有 KEK 标识是否需要迁移（是否缺少用户认证绑定）
+     * true = 旧 KEK 无认证绑定，需要迁移
+     */
+    fun needsMigration(): Boolean {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+        if (!keyStore.containsAlias(KEYSTORE_ALIAS)) return false
+        val entry = keyStore.getEntry(KEYSTORE_ALIAS, null) ?: return false
+        val oldKek = (entry as KeyStore.SecretKeyEntry).secretKey
+        return try {
+            val testCipher = Cipher.getInstance(TRANSFORMATION)
+            testCipher.init(Cipher.ENCRYPT_MODE, oldKek)
+            true  // 无异常 → KEK 无用户认证绑定，需要迁移
+        } catch (_: Exception) {
+            false // 已有认证绑定
+        }
+    }
+
+    /**
+     * 迁移旧 KEK（无用户认证绑定）到新 KEK（绑定了用户认证）
+     * @return (新加密的DEK_Base64, 新IV_Base64)，或 null 无需迁移
+     */
+    fun migrateKEK(oldEncryptedDekB64: String, oldIvB64: String): Pair<String, String>? {
+        if (!needsMigration()) return null
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+        val oldEntry = keyStore.getEntry(KEYSTORE_ALIAS, null) ?: return null
+        val oldKek = (oldEntry as KeyStore.SecretKeyEntry).secretKey
+
+        val encryptedDek = android.util.Base64.decode(oldEncryptedDekB64, android.util.Base64.NO_WRAP)
+        val iv = android.util.Base64.decode(oldIvB64, android.util.Base64.NO_WRAP)
+        val dek = decryptDEK(oldKek, encryptedDek, iv)
+
+        keyStore.deleteEntry(KEYSTORE_ALIAS)
+        val newKek = getOrCreateKEK()
+        val (newEncryptedDek, newIv) = encryptDEK(newKek, dek)
+        dek.fill(0)
+
+        return Pair(
+            android.util.Base64.encodeToString(newEncryptedDek, android.util.Base64.NO_WRAP),
+            android.util.Base64.encodeToString(newIv, android.util.Base64.NO_WRAP)
+        )
     }
 }
