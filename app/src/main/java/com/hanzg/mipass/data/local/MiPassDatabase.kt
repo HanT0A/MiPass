@@ -65,6 +65,15 @@ abstract class MiPassDatabase : RoomDatabase() {
             kek: SecretKey
         ): ByteArray {
             val prefs = createSecurePrefs(context)
+
+            // 检查是否有 biometric 解密后的临时 DEK
+            val tempDekB64 = prefs.getString("temp_dek", null)
+            if (tempDekB64 != null) {
+                val tempDek = Base64.decode(tempDekB64, Base64.NO_WRAP)
+                prefs.edit().remove("temp_dek").apply() // 用完即清除
+                return tempDek
+            }
+
             val encryptedDekB64 = prefs.getString(KEY_ENCRYPTED_DEK, null)
             val ivB64 = prefs.getString(KEY_DEK_IV, null)
 

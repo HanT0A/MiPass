@@ -178,10 +178,26 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     title = "身份验证",
                     subtitle = "验证身份以解锁 MiPass",
                     negativeButtonText = "使用主密码",
-                    onSuccess = { _ ->
+                    onSuccess = { resultCipher ->
                         if (myGen != biometricGeneration) return@showPromptWithCrypto
                         runBlocking(Dispatchers.IO) {
-                            selfDestructManager.resetAttempts()
+                            try {
+                                // 使用 TEE 授权的 cipher 解密 DEK
+                                val encryptedDekB64 = getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE)
+                                    .getString("encrypted_dek", null) ?: throw IllegalStateException("No encrypted DEK")
+                                val encryptedDek = Base64.decode(encryptedDekB64, Base64.NO_WRAP)
+                                val decryptedDek = resultCipher.doFinal(encryptedDek)
+                                // 保存解密后的 DEK，供 MiPassDatabase 使用（避免再次访问未授权的 KEK）
+                                getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE).edit()
+                                    .putString("temp_dek", Base64.encodeToString(decryptedDek, Base64.NO_WRAP))
+                                    .commit()
+                                java.util.Arrays.fill(decryptedDek, 0.toByte())
+                                selfDestructManager.resetAttempts()
+                            } catch (e: Exception) {
+                                android.util.Log.e("MiPass", "DEK decryption failed after biometric", e)
+                            }
+                        }
+                        runBlocking {
                             masterPasswordManager.recordBootId()
                             masterPasswordManager.recordFingerprintDbHash()
                         }
