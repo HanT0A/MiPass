@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -187,166 +188,106 @@ private fun UnlockContent(
     hasBiometric: Boolean,
     onBiometricAuth: (() -> Unit)?
 ) {
-    var useBiometric by remember { mutableStateOf(hasBiometric) }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var lockoutRemaining by remember {
         mutableStateOf(masterPasswordManager.getLockoutRemainingSeconds())
     }
 
-    if (useBiometric && onBiometricAuth != null) {
-        // 生物识别验证
-        Column(
+    // 主密码验证页
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(48.dp))
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = PhosphorIcons.Regular.Fingerprint,
-                    contentDescription = null,
-                    modifier = Modifier.size(44.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "验证身份",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+            Icon(
+                imageVector = PhosphorIcons.Regular.LockSimple,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "输入主密码",
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "请输入主密码以解锁 MiPass",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+        PasswordTextField(
+            value = password,
+            onValueChange = { password = it; error = null },
+            label = "主密码",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = lockoutRemaining == 0
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "至少 8 位，必须包含字母和数字",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (lockoutRemaining > 0) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                "密码输入已冻结，请等待 ${lockoutRemaining} 秒",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        if (error != null) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "使用指纹或面容解锁 MiPass",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = onBiometricAuth,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = PhosphorIcons.Regular.Fingerprint,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = {
+                when (val result = masterPasswordManager.verifyMasterPassword(password)) {
+                    is com.hanzg.mipass.utils.VerifyResult.Success -> onUnlockSuccess()
+                    is com.hanzg.mipass.utils.VerifyResult.Failed -> {
+                        error = "密码错误，已失败 ${result.attempts} 次"
+                        password = ""
+                    }
+                    is com.hanzg.mipass.utils.VerifyResult.LockedOut -> {
+                        lockoutRemaining = result.remainingSeconds
+                        error = "密码输入已冻结 ${result.remainingSeconds} 秒"
+                    }
+                    is com.hanzg.mipass.utils.VerifyResult.Error -> error = "系统错误"
+                }
+            },
+            enabled = password.isNotEmpty() && lockoutRemaining == 0,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("解锁")
+        }
+        if (hasBiometric) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(onClick = onBiometricAuth ?: {}) {
                 Text("使用指纹/面容解锁")
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(onClick = { useBiometric = false }) {
-                Text("使用主密码验证")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onExit) {
-                Text("退出应用", color = MaterialTheme.colorScheme.error)
-            }
         }
-    } else {
-        // 主密码验证
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .verticalScroll(rememberScrollState())
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(48.dp))
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = PhosphorIcons.Regular.LockSimple,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "输入主密码",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "请输入主密码以解锁 MiPass",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            PasswordTextField(
-                value = password,
-                onValueChange = { password = it; error = null },
-                label = "主密码",
-                modifier = Modifier.fillMaxWidth(),
-                enabled = lockoutRemaining == 0
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "至少 8 位，必须包含字母和数字",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (lockoutRemaining > 0) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "密码输入已冻结，请等待 ${lockoutRemaining} 秒",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            if (error != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = {
-                    when (val result = masterPasswordManager.verifyMasterPassword(password)) {
-                        is com.hanzg.mipass.utils.VerifyResult.Success -> onUnlockSuccess()
-                        is com.hanzg.mipass.utils.VerifyResult.Failed -> {
-                            error = "密码错误，已失败 ${result.attempts} 次"
-                            password = ""
-                        }
-                        is com.hanzg.mipass.utils.VerifyResult.LockedOut -> {
-                            lockoutRemaining = result.remainingSeconds
-                            error = "密码输入已冻结 ${result.remainingSeconds} 秒"
-                        }
-                        is com.hanzg.mipass.utils.VerifyResult.Error -> error = "系统错误"
-                    }
-                },
-                enabled = password.isNotEmpty() && lockoutRemaining == 0,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("解锁")
-            }
-            if (hasBiometric) {
-                Spacer(modifier = Modifier.height(16.dp))
-                TextButton(onClick = { useBiometric = true }) {
-                    Text("使用指纹/面容解锁")
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
-                Text("退出应用", color = MaterialTheme.colorScheme.error)
-            }
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
+            Text("退出应用", color = MaterialTheme.colorScheme.error)
         }
     }
 }
