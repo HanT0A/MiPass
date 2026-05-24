@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,8 +48,6 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.*
 import com.hanzg.mipass.data.local.PasswordEntity
-import com.hanzg.mipass.ui.theme.DurationShort
-import com.hanzg.mipass.ui.theme.MiPassEaseInOut
 import com.hanzg.mipass.utils.IconMatcher
 
 @Composable
@@ -67,7 +64,12 @@ fun PasswordCard(
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
-    val iconInfo = remember(entity.name, context) { IconMatcher.resolveWithContext(entity.name, context) }
+    val iconInfo = remember(entity.name) { IconMatcher.resolve(entity.name) }
+    val iconResId = remember(entity.name) {
+        if (iconInfo.resName != null)
+            context.resources.getIdentifier(iconInfo.resName, "drawable", context.packageName)
+        else 0
+    }
 
     Surface(
         modifier = modifier
@@ -75,7 +77,8 @@ fun PasswordCard(
             .clickable(onClick = onCardClick),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 2.dp
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier
@@ -102,23 +105,13 @@ fun PasswordCard(
                                 .clip(RoundedCornerShape(8.dp)),
                             contentScale = ContentScale.Crop
                         )
-                    } else if (iconInfo.resName != null) {
-                        if (iconInfo.resId != 0) {
-                            Icon(
-                                painter = painterResource(id = iconInfo.resId),
-                                contentDescription = entity.name,
-                                tint = iconInfo.color,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        } else {
-                            Text(
-                                text = iconInfo.letter,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = iconInfo.color
-                            )
-                        }
+                    } else if (iconResId != 0) {
+                        Icon(
+                            painter = painterResource(id = iconResId),
+                            contentDescription = entity.name,
+                            tint = iconInfo.color,
+                            modifier = Modifier.size(24.dp)
+                        )
                     } else {
                         Text(
                             text = iconInfo.letter,
@@ -149,7 +142,6 @@ fun PasswordCard(
                     if (onEdit != null || onDelete != null) {
                         var moreExpanded by remember { mutableStateOf(false) }
                         Box {
-                            // Scrim
                             if (moreExpanded) {
                                 Popup {
                                     Box(
