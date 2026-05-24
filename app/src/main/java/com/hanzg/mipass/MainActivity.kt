@@ -32,7 +32,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
 
@@ -97,13 +99,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             prefs = EntryPoints.get(applicationContext, MainActivityEntryPoint::class.java).appPreferences()
         } catch (_: Exception) {}
 
-        // 防截屏保护（可从设置关闭，默认开启）
-        val screenshotProtection = runBlocking {
-            try { prefs?.settingsFlow?.first()?.screenshotProtection ?: true }
-            catch (_: Exception) { true }
-        }
-        if (screenshotProtection) {
-            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        // FLAG_SECURE 默认开启（安全优先），异步读取设置后可按需关闭
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val screenshotProtection = try {
+                prefs?.settingsFlow?.first()?.screenshotProtection ?: true
+            } catch (_: Exception) { true }
+            if (!screenshotProtection) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
         }
 
         handleIncomingIntent(intent)
@@ -298,21 +304,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun showPrivacyOverlay() {
         if (privacyOverlay != null) return
-        val isDark = runBlocking {
-            val themeMode = try { prefs?.settingsFlow?.first()?.themeMode ?: "system" }
-                catch (_: Exception) { "system" }
-            when (themeMode) {
-                "dark" -> true
-                "light" -> false
-                else -> {
-                    val nightMode = resources.configuration.uiMode and
-                        android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                }
-            }
-        }
+        // 默认显示黑色遮罩（偏安全）
         privacyOverlay = View(this).apply {
-            setBackgroundColor(if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.BLACK)
             alpha = 1f
         }
         (window.decorView as? android.view.ViewGroup)?.addView(
@@ -322,6 +316,26 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+        // 异步获取主题色
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val isDark = try {
+                val themeMode = prefs?.settingsFlow?.first()?.themeMode ?: "system"
+                when (themeMode) {
+                    "dark" -> true
+                    "light" -> false
+                    else -> {
+                        (resources.configuration.uiMode and
+                            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                            android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    }
+                }
+            } catch (_: Exception) { true }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                privacyOverlay?.setBackgroundColor(
+                    if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                )
+            }
+        }
     }
 
     private fun removePrivacyOverlay() {
@@ -330,8 +344,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
 
     inner class AppLifecycleObserver : LifecycleEventObserver {
-        // 缓存锁定时长，避免 onResume 中 runBlocking
+        // 缓存锁定时长和生物识别状态，避免 onResume 中 runBlocking
         private var cachedLockTimeout: Int = 60
+        private var cachedBiometricEnabled: Boolean = false
 
         override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
             when (event) {
@@ -339,10 +354,16 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     // 真正切后台时记录时间
                     pauseTimestamp = System.currentTimeMillis()
                     if (hasAuthenticated) showPrivacyOverlay()
-                    // 读取最新的锁定时长
-                    cachedLockTimeout = runBlocking {
-                        try { prefs?.settingsFlow?.first()?.lockTimeoutSeconds ?: 60 }
-                        catch (_: Exception) { 60 }
+                    // 读取最新的锁定时长和生物识别状态
+                    runBlocking {
+                        try {
+                            val s = prefs?.settingsFlow?.first()
+                            cachedLockTimeout = s?.lockTimeoutSeconds ?: 60
+                            cachedBiometricEnabled = s?.biometricEnabled ?: false
+                        } catch (_: Exception) {
+                            cachedLockTimeout = 60
+                            cachedBiometricEnabled = false
+                        }
                     }
                 }
                 Lifecycle.Event.ON_START -> {
@@ -362,10 +383,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             }
                             "unlock" -> {
                                 // 生物识别开启则优先重试，否则保持主密码解锁
-                                val bioEnabled = runBlocking {
-                                    try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
-                                    catch (_: Exception) { false }
-                                }
+                                val bioEnabled = cachedBiometricEnabled
                                 if (bioEnabled && !masterPasswordManager.shouldRequireMasterPassword()) {
                                     showPrivacyOverlay()
                                     performBiometricAuth()
