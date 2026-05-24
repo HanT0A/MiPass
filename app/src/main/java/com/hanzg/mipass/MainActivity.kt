@@ -74,6 +74,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private var authState: AuthState = AuthState.OOBE
     private var biometricGeneration = 0
+    private var autoTriggerBio = true
 
     private val mainEntryPoint by lazy {
         EntryPoints.get(applicationContext, MainActivityEntryPoint::class.java)
@@ -210,6 +211,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         }
                         authState = AuthState.DONE
                         hasAuthenticated = true
+                        autoTriggerBio = true
                         removePrivacyOverlay()
                         renderContent()
                     },
@@ -252,6 +254,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         val bioCapable = bioManager.canAuthenticate() is BiometricResult.Ready
         val canRetryBio = mode == MasterPasswordScreenMode.UNLOCK && bioEnabled && bioCapable && !shouldRequirePwd
+        val triggerBio = canRetryBio && autoTriggerBio
+        autoTriggerBio = false
         setContent {
             MiPassTheme(themeMode = prefsRef?.let {
                 val settings by it.settingsFlow.collectAsState(initial = AppSettings())
@@ -271,6 +275,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     onUnlockSuccess = {
                         authState = AuthState.DONE
                         hasAuthenticated = true
+                        autoTriggerBio = true
                         mgr.recordBootId()
                         mgr.recordFingerprintDbHash()
                         renderContent()
@@ -279,6 +284,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     onBiometricAuth = if (canRetryBio) { { performBiometricAuth() } } else null
                 )
             }
+        }
+        // 首次显示密码页时自动触发生物识别（系统弹窗覆盖上方）
+        if (triggerBio) {
+            performBiometricAuth()
         }
     }
 
