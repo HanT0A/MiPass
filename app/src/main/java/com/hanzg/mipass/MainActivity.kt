@@ -23,6 +23,7 @@ import com.hanzg.mipass.ui.theme.MiPassTheme
 import com.hanzg.mipass.utils.BiometricPromptManager
 import com.hanzg.mipass.utils.KeyStoreManager
 import com.hanzg.mipass.utils.LocaleHelper
+import com.hanzg.mipass.utils.AuthState
 import com.hanzg.mipass.utils.MasterPasswordManager
 import com.hanzg.mipass.utils.SelfDestructManager
 import dagger.hilt.EntryPoint
@@ -70,8 +71,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private var privacyOverlay: View? = null
     private var prefs: AppPreferences? = null
 
-    // Auth states: "oobe" | "unlock" | "biometric" | "done"
-    private var authState = "oobe"
+    private var authState: AuthState = AuthState.OOBE
     private var biometricGeneration = 0
 
     private val mainEntryPoint by lazy {
@@ -117,7 +117,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // 配置变更（深色模式切换等）恢复认证状态
         if (savedInstanceState?.getBoolean("auth_done", false) == true) {
             hasAuthenticated = true
-            authState = "done"
+            authState = AuthState.DONE
             pauseTimestamp = savedInstanceState.getLong("pause_timestamp", System.currentTimeMillis())
             androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
             lifecycle.addObserver(AppLifecycleObserver())
@@ -128,7 +128,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         if (MainActivity.skipAuthOnce) {
             MainActivity.skipAuthOnce = false
             hasAuthenticated = true
-            authState = "done"
+            authState = AuthState.DONE
             pauseTimestamp = System.currentTimeMillis()
             androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
             lifecycle.addObserver(AppLifecycleObserver())
@@ -145,16 +145,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             catch (_: Exception) { false }
         }
         authState = when {
-            !masterPasswordManager.hasMasterPassword() -> "oobe"
-            masterPasswordManager.shouldRequireMasterPassword() -> "unlock"
-            biometricEnabled -> "biometric"
-            else -> "unlock"
+            !masterPasswordManager.hasMasterPassword() -> AuthState.OOBE
+            masterPasswordManager.shouldRequireMasterPassword() -> AuthState.UNLOCK
+            biometricEnabled -> AuthState.BIOMETRIC
+            else -> AuthState.UNLOCK
         }
 
         when (authState) {
-            "oobe" -> renderSetupScreen(MasterPasswordScreenMode.SETUP)
-            "unlock" -> renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
-            "biometric" -> performBiometricAuth()
+            AuthState.OOBE -> renderSetupScreen(MasterPasswordScreenMode.SETUP)
+            AuthState.UNLOCK -> renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+            AuthState.BIOMETRIC -> performBiometricAuth()
+            AuthState.DONE -> renderContent()
         }
     }
 
@@ -167,7 +168,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         if (biometricEnabled &&
             result is com.hanzg.mipass.utils.BiometricResult.Ready &&
             !masterPasswordManager.shouldRequireMasterPassword()) {
-            authState = "biometric"
+            authState = AuthState.BIOMETRIC
             val myGen = ++biometricGeneration
 
             try {
@@ -207,7 +208,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             masterPasswordManager.recordBootId()
                             masterPasswordManager.recordFingerprintDbHash()
                         }
-                        authState = "done"
+                        authState = AuthState.DONE
                         hasAuthenticated = true
                         removePrivacyOverlay()
                         renderContent()
@@ -215,7 +216,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     onError = { errorCode, _ ->
                         if (myGen != biometricGeneration) return@showPromptWithCrypto
                         runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
-                        authState = "unlock"
+                        authState = AuthState.UNLOCK
                         if (errorCode == 10 || errorCode == 13) {
                             removePrivacyOverlay()
                             renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
@@ -232,7 +233,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             }
         }
 
-        authState = "unlock"
+        authState = AuthState.UNLOCK
         removePrivacyOverlay()
         renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
     }
@@ -250,14 +251,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     masterPasswordManager = mgr,
                     onSetupComplete = {
                         // OOBE 完成 → 直接进入应用（生物识别默认关闭，需用户手动开启）
-                        authState = "done"
+                        authState = AuthState.DONE
                         hasAuthenticated = true
                         mgr.recordBootId()
                         mgr.recordFingerprintDbHash()
                         renderContent()
                     },
                     onUnlockSuccess = {
-                        authState = "done"
+                        authState = AuthState.DONE
                         hasAuthenticated = true
                         mgr.recordBootId()
                         mgr.recordFingerprintDbHash()
@@ -376,12 +377,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     if (!hasAuthenticated) {
                         // 验证中途退出再回来 → 重置解锁状态
                         when (authState) {
-                            "oobe" -> { /* 设置界面已显示，无需额外操作 */ }
-                            "biometric" -> {
+                            AuthState.OOBE -> { /* 设置界面已显示，无需额外操作 */ }
+                            AuthState.BIOMETRIC -> {
                                 showPrivacyOverlay()
                                 performBiometricAuth()
                             }
-                            "unlock" -> {
+                            AuthState.UNLOCK -> {
                                 // 生物识别开启则优先重试，否则保持主密码解锁
                                 val bioEnabled = cachedBiometricEnabled
                                 if (bioEnabled && !masterPasswordManager.shouldRequireMasterPassword()) {
@@ -392,12 +393,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
                                 }
                             }
+                            AuthState.DONE -> { /* already authenticated */ }
                         }
                         return
                     }
                     if (masterPasswordManager.shouldRequireMasterPassword()) {
                         hasAuthenticated = false
-                        authState = "unlock"
+                        authState = AuthState.UNLOCK
                         removePrivacyOverlay()
                         renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
                         return
