@@ -68,12 +68,17 @@ abstract class MiPassDatabase : RoomDatabase() {
                 val kek = keyStoreManager.getOrCreateKEK()
                 val dek = loadOrCreateDEK(context, keyStoreManager, kek)
                 val passphrase = Base64.encodeToString(dek, Base64.NO_WRAP)
-                val factory = SupportFactory(passphrase.toByteArray())
+                val passphraseBytes = passphrase.toByteArray()
+                val factory = SupportFactory(passphraseBytes)
 
-                Room.databaseBuilder(context, MiPassDatabase::class.java, DATABASE_NAME)
+                val db = Room.databaseBuilder(context, MiPassDatabase::class.java, DATABASE_NAME)
                     .openHelperFactory(factory)
                     .addMigrations(MIGRATION_1_2)
                     .build()
+
+                java.util.Arrays.fill(dek, 0.toByte())
+                java.util.Arrays.fill(passphraseBytes, 0.toByte())
+                return db
             } catch (e: Exception) {
                 android.util.Log.e("MiPassDatabase", "Failed to initialize encrypted database", e)
                 throw RuntimeException("数据库初始化失败，请重启应用", e)
