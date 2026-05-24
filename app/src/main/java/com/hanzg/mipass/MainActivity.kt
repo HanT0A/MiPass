@@ -3,6 +3,7 @@ package com.hanzg.mipass
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -20,6 +21,7 @@ import com.hanzg.mipass.ui.screens.MasterPasswordScreenMode
 import com.hanzg.mipass.ui.screens.MasterPasswordSetupScreen
 import com.hanzg.mipass.ui.theme.MiPassTheme
 import com.hanzg.mipass.utils.BiometricPromptManager
+import com.hanzg.mipass.utils.KeyStoreManager
 import com.hanzg.mipass.utils.LocaleHelper
 import com.hanzg.mipass.utils.MasterPasswordManager
 import com.hanzg.mipass.utils.SelfDestructManager
@@ -28,6 +30,7 @@ import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
@@ -41,6 +44,7 @@ interface MainActivityEntryPoint {
     fun biometricPromptManager(): BiometricPromptManager
     fun selfDestructManager(): SelfDestructManager
     fun localeHelper(): LocaleHelper
+    fun keyStoreManager(): KeyStoreManager
 }
 
 @AndroidEntryPoint
@@ -67,6 +71,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     // Auth states: "oobe" | "unlock" | "biometric" | "done"
     private var authState = "oobe"
     private var biometricGeneration = 0
+
+    private val mainEntryPoint by lazy {
+        EntryPoints.get(applicationContext, MainActivityEntryPoint::class.java)
+    }
 
     override fun attachBaseContext(newBase: Context?) {
         val base = newBase ?: return super.attachBaseContext(null)
@@ -155,45 +163,56 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             !masterPasswordManager.shouldRequireMasterPassword()) {
             authState = "biometric"
             val myGen = ++biometricGeneration
-            biometricPromptManager.showPrompt(
-                activity = this,
-                title = "身份验证",
-                subtitle = "验证身份以解锁 MiPass",
-                negativeButtonText = "使用主密码",
-                onSuccess = {
-                    if (myGen != biometricGeneration) return@showPrompt
-                    runBlocking {
-                        selfDestructManager.resetAttempts()
-                        masterPasswordManager.recordBootId()
-                        masterPasswordManager.recordFingerprintDbHash()
-                    }
-                    authState = "done"
-                    hasAuthenticated = true
-                    removePrivacyOverlay()
-                    renderContent()
-                },
-                onError = { errorCode, _ ->
-                    if (myGen != biometricGeneration) return@showPrompt
-                    runBlocking { selfDestructManager.recordFailedAttempt() }
-                    authState = "unlock"
-                    // 10=用户按返回键, 13=用户点"使用主密码" → 立即显示解锁界面
-                    // 5=通用取消(含切后台), 其他=硬件错误 → 保留遮罩等 ON_START 处理
-                    if (errorCode == 10 || errorCode == 13) {
+
+            try {
+                val keyStoreManager = mainEntryPoint.keyStoreManager()
+                val kek = keyStoreManager.getOrCreateKEK()
+                val dekPrefs = getSharedPreferences("mipass_dek_prefs", Context.MODE_PRIVATE)
+                val ivB64 = dekPrefs.getString("dek_iv", null) ?: throw IllegalStateException("No DEK IV")
+                val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+                val cipher = keyStoreManager.getDecryptCipher(kek, iv)
+
+                biometricPromptManager.showPromptWithCrypto(
+                    activity = this,
+                    cipher = cipher,
+                    title = "身份验证",
+                    subtitle = "验证身份以解锁 MiPass",
+                    negativeButtonText = "使用主密码",
+                    onSuccess = { _ ->
+                        if (myGen != biometricGeneration) return@showPromptWithCrypto
+                        runBlocking(Dispatchers.IO) {
+                            selfDestructManager.resetAttempts()
+                            masterPasswordManager.recordBootId()
+                            masterPasswordManager.recordFingerprintDbHash()
+                        }
+                        authState = "done"
+                        hasAuthenticated = true
                         removePrivacyOverlay()
-                        renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                        renderContent()
+                    },
+                    onError = { errorCode, _ ->
+                        if (myGen != biometricGeneration) return@showPromptWithCrypto
+                        runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
+                        authState = "unlock"
+                        if (errorCode == 10 || errorCode == 13) {
+                            removePrivacyOverlay()
+                            renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                        }
+                    },
+                    onFailed = {
+                        if (myGen != biometricGeneration) return@showPromptWithCrypto
+                        runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
                     }
-                },
-                onFailed = {
-                    if (myGen != biometricGeneration) return@showPrompt
-                    runBlocking { selfDestructManager.recordFailedAttempt() }
-                }
-            )
-        } else {
-            // No biometric → use master password
-            authState = "unlock"
-            removePrivacyOverlay()
-            renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                )
+                return
+            } catch (_: Exception) {
+                // CryptoObject 设置失败，回退到主密码解锁
+            }
         }
+
+        authState = "unlock"
+        removePrivacyOverlay()
+        renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
     }
 
     private fun renderSetupScreen(mode: MasterPasswordScreenMode) {

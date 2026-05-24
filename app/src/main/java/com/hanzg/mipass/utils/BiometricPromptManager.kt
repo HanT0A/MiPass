@@ -6,6 +6,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.crypto.Cipher
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -62,6 +63,48 @@ class BiometricPromptManager @Inject constructor(
             })
 
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    fun showPromptWithCrypto(
+        activity: FragmentActivity,
+        cipher: Cipher,
+        title: String = "生物识别验证",
+        subtitle: String = "验证身份以解锁 MiPass",
+        negativeButtonText: String = "使用主密码",
+        onSuccess: (Cipher) -> Unit,
+        onError: (Int, String) -> Unit,
+        onFailed: () -> Unit
+    ) {
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setNegativeButtonText(negativeButtonText)
+            .build()
+
+        val cryptoObject = BiometricPrompt.CryptoObject(cipher)
+
+        val biometricPrompt = BiometricPrompt(activity,
+            ContextCompat.getMainExecutor(context),
+            object : BiometricPrompt.AuthenticationCallback() {
+
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    val resultCipher = result.cryptoObject?.cipher ?: cipher
+                    onSuccess(resultCipher)
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    onError(errorCode, errString.toString())
+                }
+
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    onFailed()
+                }
+            })
+
+        biometricPrompt.authenticate(promptInfo, cryptoObject)
     }
 }
 

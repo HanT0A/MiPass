@@ -78,4 +78,13 @@ class KeyStoreManager @Inject constructor() {
         cipher.init(Cipher.DECRYPT_MODE, kek, GCMParameterSpec(GCM_TAG_LENGTH, iv))
         return cipher.doFinal(encryptedDek)
     }
+
+    /**
+     * 创建仅初始化（不解密）的 Cipher 实例，用于 BiometricPrompt CryptoObject 绑定
+     */
+    fun getDecryptCipher(kek: SecretKey, iv: ByteArray): Cipher {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, kek, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        return cipher
+    }
 }
