@@ -170,7 +170,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             result is com.hanzg.mipass.utils.BiometricResult.Ready &&
             !masterPasswordManager.shouldRequireMasterPassword()) {
             authState = AuthState.BIOMETRIC
-            showPrivacyOverlay()
             val myGen = ++biometricGeneration
 
             try {
@@ -219,9 +218,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         if (myGen != biometricGeneration) return@showPromptWithCrypto
                         runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
                         authState = AuthState.UNLOCK
-                        if (errorCode == 10 || errorCode == 13) {
-                            removePrivacyOverlay()
-                            renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                        when (errorCode) {
+                            10 -> finish() // 用户取消
+                            13 -> {
+                                removePrivacyOverlay()
+                                renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                            }
                         }
                     },
                     onFailed = {
