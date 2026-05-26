@@ -15,4 +15,5 @@
 local.properties
 .claude/
 .idea/
+.kotlin/
 app/build/

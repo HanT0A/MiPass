@@ -383,12 +383,8 @@ CSV 固定表头：name,account,password,url,category,notes,type（name/account/
 
 ### 已知问题
 
-- [ ] **底部导航栏上方白条**：NavigationBar 与内容区域之间存在白条，已尝试多种方案。待进一步排查。
 - [ ] **English 本地化未完成**：所有 UI 文本为硬编码中文，语言切换仅影响系统组件
 - [ ] **Vivo 剪贴板历史无法清除**：Vivo OEM ROM 限制
 
 ### 待开发
-- [ ] 密码过期提醒
-- [ ] 暗码/伪密码（duress password）功能
-- [ ] UI/集成测试
-- [ ] CI/CD 配置
+
