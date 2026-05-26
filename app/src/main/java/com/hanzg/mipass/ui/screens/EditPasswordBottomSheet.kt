@@ -68,7 +68,7 @@ import coil.request.ImageRequest
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.*
-import com.hanzg.mipass.data.local.PasswordEntity
+import com.hanzg.mipass.domain.model.Password
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.usecase.GeneratePasswordUseCase
 import com.hanzg.mipass.utils.IconMatcher
@@ -77,7 +77,7 @@ import com.hanzg.mipass.ui.components.PasswordTextField
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EditPasswordBottomSheet(
-    entity: PasswordEntity,
+    entity: Password,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onSaved: () -> Unit,
@@ -136,7 +136,7 @@ fun EditPasswordBottomSheet(
                     IconButton(
                         onClick = {
                             if (state.name.isBlank()) {
-                                Toast.makeText(context, "名称为必填项", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
                                 return@IconButton
                             }
                             viewModel.save { onSaved() }

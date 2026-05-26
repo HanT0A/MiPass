@@ -4,25 +4,26 @@ import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hanzg.mipass.data.local.PasswordEntity
+import com.hanzg.mipass.domain.model.Password
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.repository.PasswordRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @Immutable
 data class VaultUiState(
-    val flatList: List<PasswordEntity> = emptyList(),
+    val flatList: List<Password> = emptyList(),
     val categories: List<String> = listOf("全部"),
     val searchQuery: String = "",
     val selectedCategory: String = "全部",
@@ -37,56 +38,45 @@ class VaultViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     private val _selectedCategory = MutableStateFlow("全部")
     private val _filterType = MutableStateFlow<EntryType?>(EntryType.APP)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<VaultUiState> = combine(
-        repository.getAllPasswordsFlow(),
-        _searchQuery,
-        _selectedCategory,
-        _filterType
-    ) { allData, query, category, type ->
-        val typeFiltered = if (type != null) {
-            allData.filter { it.type == type }
-        } else allData
-
-        val categoryFiltered = if (category == "全部") {
-            typeFiltered
-        } else {
-            typeFiltered.filter { it.category == category }
-        }
-
-        val flatList = if (query.isBlank()) {
-            categoryFiltered
-        } else {
-            val lowerQuery = query.lowercase()
-            categoryFiltered.filter {
-                it.name.lowercase().contains(lowerQuery) ||
-                        it.account.lowercase().contains(lowerQuery)
+        _searchQuery, _selectedCategory, _filterType
+    ) { query, category, type ->
+        Triple(query, category, type)
+    }
+        .flatMapLatest { (query, category, type) ->
+            combine(
+                repository.searchPasswords(query, category, null),
+                repository.searchPasswords(query, "全部", null)
+            ) { filteredEntries, allCatEntries ->
+                val typeFiltered = type?.let { t -> filteredEntries.filter { it.type == t } } ?: filteredEntries
+                val catsForType = type?.let { t ->
+                    allCatEntries.filter { it.type == t }.map { it.category }.distinct().filter { it.isNotBlank() }.sorted()
+                } ?: allCatEntries.map { it.category }.distinct().filter { it.isNotBlank() }.sorted()
+                VaultUiState(
+                    flatList = typeFiltered,
+                    categories = listOf("全部") + catsForType,
+                    searchQuery = query,
+                    selectedCategory = category,
+                    filterType = type ?: EntryType.APP,
+                    isLoading = false,
+                    isEmpty = typeFiltered.isEmpty()
+                )
             }
         }
-
-        VaultUiState(
-            flatList = flatList,
-            categories = listOf("全部") + typeFiltered.map { it.category }.distinct().sorted(),
-            searchQuery = query,
-            selectedCategory = category,
-            filterType = type ?: EntryType.APP,
-            isLoading = false,
-            isEmpty = flatList.isEmpty()
+        .catch { e ->
+            Log.e("VaultViewModel", "Database flow error", e)
+            emit(VaultUiState(isLoading = false, isEmpty = true))
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(30_000),
+            initialValue = VaultUiState(isLoading = true)
         )
-    }
-    .catch { e ->
-        Log.e("VaultViewModel", "Database flow error", e)
-        emit(VaultUiState(isLoading = false, isEmpty = true))
-    }
-    .flowOn(Dispatchers.IO)
-    .stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = VaultUiState(isLoading = true)
-    )
 
     fun setFilterType(type: EntryType?) {
         _filterType.value = type
@@ -100,7 +90,7 @@ class VaultViewModel @Inject constructor(
         _selectedCategory.value = category
     }
 
-    fun deletePassword(entity: PasswordEntity) {
+    fun deletePassword(entity: Password) {
         viewModelScope.launch {
             repository.deletePassword(entity)
         }

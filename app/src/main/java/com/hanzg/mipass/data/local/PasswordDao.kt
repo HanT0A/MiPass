@@ -30,6 +30,9 @@ interface PasswordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPassword(entity: PasswordEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPasswords(entities: List<PasswordEntity>)
+
     @Update
     suspend fun updatePassword(entity: PasswordEntity)
 
@@ -48,6 +51,22 @@ interface PasswordDao {
     @Query("SELECT * FROM password_entries WHERE url = :url AND account = :account LIMIT 1")
     suspend fun findByUrlAndAccount(url: String, account: String): PasswordEntity?
 
+    @Query("""
+        SELECT * FROM password_entries
+        WHERE (:type IS NULL OR entry_type = :type)
+          AND (:category = '全部' OR category = :category)
+          AND (:query = '' OR name LIKE '%' || :query || '%' OR account LIKE '%' || :query || '%')
+        ORDER BY updated_at DESC
+    """)
+    fun searchPasswordsFiltered(
+        query: String,
+        category: String,
+        type: String?
+    ): Flow<List<PasswordEntity>>
+
     @Query("SELECT DISTINCT category FROM password_entries ORDER BY category")
     suspend fun getAllCategories(): List<String>
+
+    @Query("SELECT DISTINCT category FROM password_entries WHERE entry_type = :type ORDER BY category")
+    suspend fun getCategoriesByType(type: String): List<String>
 }

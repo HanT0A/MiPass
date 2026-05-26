@@ -17,7 +17,9 @@ class BiometricPromptManager @Inject constructor(
 
     fun canAuthenticate(): BiometricResult {
         val biometricManager = BiometricManager.from(context)
-        return when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
+        return when (biometricManager.canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )) {
             BiometricManager.BIOMETRIC_SUCCESS -> BiometricResult.Ready
             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> BiometricResult.NoHardware
             BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> BiometricResult.Unavailable
@@ -29,9 +31,8 @@ class BiometricPromptManager @Inject constructor(
 
     fun showPrompt(
         activity: FragmentActivity,
-        title: String = "生物识别验证",
+        title: String = "身份验证",
         subtitle: String = "验证身份以解锁 MiPass",
-        negativeButtonText: String = "使用主密码",
         onSuccess: () -> Unit,
         onError: (Int, String) -> Unit,
         onFailed: () -> Unit
@@ -39,7 +40,9 @@ class BiometricPromptManager @Inject constructor(
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setNegativeButtonText(negativeButtonText)
+            .setAllowedAuthenticators(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
             .build()
 
         val biometricPrompt = BiometricPrompt(activity,
@@ -68,9 +71,8 @@ class BiometricPromptManager @Inject constructor(
     fun showPromptWithCrypto(
         activity: FragmentActivity,
         cipher: Cipher,
-        title: String = "生物识别验证",
+        title: String = "身份验证",
         subtitle: String = "验证身份以解锁 MiPass",
-        negativeButtonText: String = "使用主密码",
         onSuccess: (Cipher) -> Unit,
         onError: (Int, String) -> Unit,
         onFailed: () -> Unit
@@ -78,7 +80,9 @@ class BiometricPromptManager @Inject constructor(
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setNegativeButtonText(negativeButtonText)
+            .setAllowedAuthenticators(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
             .build()
 
         val cryptoObject = BiometricPrompt.CryptoObject(cipher)

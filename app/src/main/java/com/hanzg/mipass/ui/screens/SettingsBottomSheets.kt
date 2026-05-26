@@ -47,46 +47,6 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeBottomSheet(
-    selected: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = MaterialTheme.shapes.large,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 0.dp
-    ) {
-        Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
-            Text(
-                "主题风格",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-            )
-            val options = listOf("跟随系统" to "system", "浅色" to "light", "深色" to "dark")
-            options.forEach { (label, value) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(value) }
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(selected = value == selected, onClick = { onSelect(value) })
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(label, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 fun LanguageBottomSheet(
     selected: String,
     onSelect: (String) -> Unit,
@@ -103,7 +63,7 @@ fun LanguageBottomSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(
-                "显示语言",
+                "语言",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
             )
@@ -152,9 +112,7 @@ fun SnapshotBottomSheet(
                     showRestoreConfirm = null
                     scope.launch {
                         try {
-                            val encrypted = file.readBytes()
-                            val key = encrypted.copyOfRange(12, 12 + 32)
-                            val passwords = snapshotManager.restoreSnapshot(file, key)
+                            val passwords = snapshotManager.restoreSnapshot(file)
                             passwordDao.deleteAll()
                             passwords.forEach { passwordDao.insertPassword(it) }
                             Toast.makeText(context, "已恢复 ${passwords.size} 条数据", Toast.LENGTH_SHORT).show()
@@ -313,7 +271,7 @@ fun LockTimeoutBottomSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
             Text(
-                "自动锁定延时",
+                "自动锁定",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
             )
@@ -345,6 +303,80 @@ fun LockTimeoutBottomSheet(
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(label, style = MaterialTheme.typography.bodyLarge)
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExportFormatBottomSheet(
+    current: com.hanzg.mipass.data.local.ExportFormat,
+    onConfirm: (com.hanzg.mipass.data.local.ExportFormat) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selected by remember { mutableStateOf(current) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = MaterialTheme.shapes.large,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp).navigationBarsPadding()) {
+            Text(
+                "导出格式",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+            )
+            Text(
+                "选择导出文件的格式：",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            com.hanzg.mipass.data.local.ExportFormat.entries.forEach { format ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selected = format }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selected == format,
+                        onClick = { selected = format }
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(format.displayName, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            when (format) {
+                                com.hanzg.mipass.data.local.ExportFormat.MIPASS -> "需设定提取码，AES-256 加密"
+                                com.hanzg.mipass.data.local.ExportFormat.JSON -> "明文 JSON 格式，方便迁移至其他工具"
+                                com.hanzg.mipass.data.local.ExportFormat.CSV -> "明文 CSV 格式，可用 Excel 打开"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { onConfirm(selected) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("确认")
             }
         }
     }

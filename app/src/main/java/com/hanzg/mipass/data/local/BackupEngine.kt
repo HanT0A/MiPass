@@ -31,6 +31,22 @@ data class ImportResult(
     val entries: List<PasswordEntity>
 )
 
+enum class ExportFormat(val extension: String, val mimeType: String, val displayName: String) {
+    MIPASS(".mipass", "application/octet-stream", ".mipass 加密"),
+    JSON(".json", "application/json", "JSON 明文"),
+    CSV(".csv", "text/csv", "CSV 明文")
+}
+
+enum class ImportFormat(val isEncrypted: Boolean) {
+    MIPASS(true),
+    JSON(false),
+    CSV(false),
+    UNKNOWN(false)
+}
+
+private val CSV_HEADER = arrayOf("name", "account", "password", "url", "category", "notes", "type")
+private val CSV_REQUIRED = setOf("name", "account", "password")
+
 @Singleton
 class BackupEngine @Inject constructor() {
 
@@ -39,7 +55,9 @@ class BackupEngine @Inject constructor() {
         private const val GCM_TAG_LENGTH = 128
         private const val GCM_IV_LENGTH = 12
         private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
-        private const val PBKDF2_ITERATIONS = 100_000
+        private const val PBKDF2_ITERATIONS = 600_000
+        private const val PBKDF2_ITERATIONS_LEGACY = 100_000
+        private const val FILE_VERSION_V2: Byte = 0x02
         private const val AES_KEY_SIZE = 256
         private const val SALT_LENGTH = 16
         private const val EXPORT_DIR = "exports"
@@ -68,8 +86,9 @@ class BackupEngine @Inject constructor() {
         val iv = cipher.iv
         val ciphertext = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
 
-        // 组装: SALT + IV + CIPHERTEXT
+        // 组装: VERSION(1) + SALT(16) + IV(12) + CIPHERTEXT
         val output = ByteArrayOutputStream()
+        output.write(FILE_VERSION_V2.toInt())
         output.write(salt)
         output.write(iv)
         output.write(ciphertext)
@@ -98,18 +117,35 @@ class BackupEngine @Inject constructor() {
             it.readBytes()
         } ?: throw SecurityException("无法读取文件")
 
-        // 解析: SALT(16) + IV(12) + CIPHERTEXT
-        val salt = encryptedData.copyOfRange(0, SALT_LENGTH)
-        val iv = encryptedData.copyOfRange(SALT_LENGTH, SALT_LENGTH + GCM_IV_LENGTH)
-        val ciphertext = encryptedData.copyOfRange(SALT_LENGTH + GCM_IV_LENGTH, encryptedData.size)
+        // 检测版本：V2 以 0x02 开头，旧版无版本字节
+        val isV2 = encryptedData.isNotEmpty() && encryptedData[0] == FILE_VERSION_V2
+        val offset = if (isV2) 1 else 0
+        val salt = encryptedData.copyOfRange(offset, offset + SALT_LENGTH)
+        val iv = encryptedData.copyOfRange(offset + SALT_LENGTH, offset + SALT_LENGTH + GCM_IV_LENGTH)
+        val ciphertext = encryptedData.copyOfRange(offset + SALT_LENGTH + GCM_IV_LENGTH, encryptedData.size)
 
-        val aesKey = deriveKey(passcode, salt)
+        deserializeFromJson(decryptWithFallback(passcode, salt, iv, ciphertext, isV2))
+    }
+
+    /**
+     * 解密数据，优先用新参数，失败回退旧参数以兼容旧文件
+     */
+    private fun decryptWithFallback(
+        passcode: String, salt: ByteArray, iv: ByteArray,
+        ciphertext: ByteArray, isV2: Boolean
+    ): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, aesKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
-        val plaintext = cipher.doFinal(ciphertext)
-        val json = String(plaintext, Charsets.UTF_8)
-
-        deserializeFromJson(json)
+        return try {
+            val aesKey = deriveKey(passcode, salt, PBKDF2_ITERATIONS)
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+        } catch (_: Exception) {
+            if (isV2) throw SecurityException("解密失败：提取码错误或文件已损坏")
+            // 旧文件：回退 100K iterations
+            val legacyKey = deriveKey(passcode, salt, PBKDF2_ITERATIONS_LEGACY)
+            cipher.init(Cipher.DECRYPT_MODE, legacyKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+        }
     }
 
     /**
@@ -211,15 +247,167 @@ class BackupEngine @Inject constructor() {
         return result
     }
 
-    private fun deriveKey(passcode: String, salt: ByteArray): SecretKey {
-        val spec = PBEKeySpec(passcode.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_SIZE)
+    private fun deriveKey(passcode: String, salt: ByteArray, iterations: Int = PBKDF2_ITERATIONS): SecretKey {
+        val spec = PBEKeySpec(passcode.toCharArray(), salt, iterations, AES_KEY_SIZE)
         val factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
         val keyBytes = factory.generateSecret(spec).encoded
         return SecretKeySpec(keyBytes, "AES")
     }
 
-    /** 校验提取码合法性：6 位数字 */
+    /** 校验提取码合法性：≥8 位，含字母和数字 */
     fun isValidPasscode(passcode: String): Boolean {
-        return passcode.length == 6 && passcode.all { it.isDigit() }
+        return passcode.length >= 8 &&
+                passcode.any { it.isLetter() } &&
+                passcode.any { it.isDigit() }
+    }
+
+    // === 通用格式导出 ===
+
+    fun exportToJsonString(entries: List<PasswordEntity>): String = serializeToJson(entries)
+
+    fun exportToCsvString(entries: List<PasswordEntity>): String {
+        val sb = StringBuilder()
+        sb.appendLine(CSV_HEADER.joinToString(","))
+        entries.forEach { entity ->
+            sb.appendLine(toCsvRow(entity))
+        }
+        return sb.toString()
+    }
+
+    private fun toCsvRow(entity: PasswordEntity): String {
+        val typeStr = entity.type.name
+        val urlStr = entity.url ?: ""
+        return listOf(
+            entity.name, entity.account, entity.password,
+            urlStr, entity.category, entity.notes, typeStr
+        ).joinToString(",") { escapeCsv(it) }
+    }
+
+    private fun escapeCsv(field: String): String {
+        return if (field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r")) {
+            "\"${field.replace("\"", "\"\"")}\""
+        } else {
+            field
+        }
+    }
+
+    // === 通用格式导入 ===
+
+    fun deserializeFromJsonString(json: String): List<PasswordEntity> = deserializeFromJson(json)
+
+    fun importFromCsvString(csv: String): List<PasswordEntity> {
+        val cleaned = csv.removePrefix("﻿")
+        val lines = parseCsvLines(cleaned)
+        if (lines.isEmpty()) return emptyList()
+
+        val header = lines.first()
+        val colIndex = mutableMapOf<String, Int>()
+        header.forEachIndexed { i, col -> colIndex[col.lowercase().trim()] = i }
+
+        for (required in CSV_REQUIRED) {
+            if (required !in colIndex) {
+                throw IllegalArgumentException("CSV缺少必填列: $required")
+            }
+        }
+
+        val result = mutableListOf<PasswordEntity>()
+        for (i in 1 until lines.size) {
+            val row = lines[i]
+            try {
+                val name = field(row, colIndex["name"]!!).trim()
+                val account = field(row, colIndex["account"]!!).trim()
+                val password = field(row, colIndex["password"]!!).trim()
+                if (name.isBlank() || account.isBlank() || password.isBlank()) continue
+
+                val typeStr = field(row, colIndex["type"]).trim().uppercase()
+                val entryType = if (typeStr == "WEB") EntryType.WEB else EntryType.APP
+
+                result.add(
+                    PasswordEntity(
+                        id = java.util.UUID.randomUUID().toString(),
+                        type = entryType,
+                        name = name,
+                        url = field(row, colIndex["url"]).trim().ifBlank { null },
+                        account = account,
+                        password = password,
+                        category = field(row, colIndex["category"]).trim().ifBlank { "其他" },
+                        notes = field(row, colIndex["notes"]).trim(),
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            } catch (_: Exception) { }
+        }
+        return result
+    }
+
+    private fun field(row: List<String>, indexKey: Int?): String {
+        return if (indexKey != null && indexKey < row.size) row[indexKey] else ""
+    }
+
+    private fun parseCsvLines(csv: String): List<List<String>> {
+        val result = mutableListOf<List<String>>()
+        var i = 0
+        while (i < csv.length) {
+            val row = mutableListOf<String>()
+            while (i < csv.length) {
+                if (csv[i] == '"') {
+                    val sb = StringBuilder()
+                    i++
+                    while (i < csv.length) {
+                        if (csv[i] == '"') {
+                            if (i + 1 < csv.length && csv[i + 1] == '"') {
+                                sb.append('"')
+                                i += 2
+                            } else {
+                                i++
+                                break
+                            }
+                        } else {
+                            sb.append(csv[i])
+                            i++
+                        }
+                    }
+                    row.add(sb.toString())
+                } else {
+                    val start = i
+                    while (i < csv.length && csv[i] != ',' && csv[i] != '\n' && csv[i] != '\r') i++
+                    row.add(csv.substring(start, i))
+                }
+                if (i < csv.length && csv[i] == ',') {
+                    i++
+                } else {
+                    break
+                }
+            }
+            while (i < csv.length && (csv[i] == '\r' || csv[i] == '\n')) i++
+            if (row.isNotEmpty() && row.any { it.isNotBlank() }) {
+                result.add(row)
+            }
+        }
+        return result
+    }
+
+    /** 根据文件扩展名检测导入格式 */
+    fun detectImportFormat(fileName: String?): ImportFormat {
+        val lower = fileName?.lowercase() ?: ""
+        return when {
+            lower.endsWith(".mipass") -> ImportFormat.MIPASS
+            lower.endsWith(".json") -> ImportFormat.JSON
+            lower.endsWith(".csv") -> ImportFormat.CSV
+            else -> ImportFormat.UNKNOWN
+        }
+    }
+
+    /** 获取 URI 的显示文件名 */
+    fun getFileName(context: Context, uri: Uri): String? {
+        return try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) cursor.getString(idx) else null
+                } else null
+            }
+        } catch (_: Exception) { null }
     }
 }

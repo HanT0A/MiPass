@@ -8,6 +8,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,10 +53,10 @@ import com.adamglin.phosphoricons.regular.*
 import com.hanzg.mipass.ui.theme.DurationShort
 import com.hanzg.mipass.ui.theme.JetBrainsMonoFont
 import com.hanzg.mipass.ui.theme.MiPassEaseInOut
-import com.hanzg.mipass.ui.theme.WarningAmber
-import com.hanzg.mipass.ui.theme.WarningOrange
 import com.hanzg.mipass.ui.navigation.MiPassBottomBar
 import com.hanzg.mipass.ui.navigation.NavRoutes
+import com.hanzg.mipass.ui.theme.WarningAmber
+import com.hanzg.mipass.ui.theme.WarningOrange
 import com.hanzg.mipass.utils.ClipboardUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,42 +69,33 @@ fun GeneratorScreen(
     val state by viewModel.uiState.collectAsState()
     val haptic = LocalHapticFeedback.current
 
-    Scaffold(
-        topBar = {
-            Column(modifier = Modifier.statusBarsPadding()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.background
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(modifier = Modifier.statusBarsPadding()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f))
-                        Text("密码生成器", style = MaterialTheme.typography.titleMedium)
-                        Box(modifier = Modifier.weight(1f))
-                    }
+                    Box(modifier = Modifier.weight(1f))
+                    Text("密码生成器", style = MaterialTheme.typography.titleMedium)
+                    Box(modifier = Modifier.weight(1f))
                 }
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
             }
-        },
-        bottomBar = {
-            MiPassBottomBar(
-                currentRoute = NavRoutes.Generator.route,
-                onNavigate = onNavigate
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
             )
         }
-    ) { padding ->
+
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .weight(1f).fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -112,7 +105,7 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp
+                shadowElevation = 0.dp
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
                     Text(
@@ -183,7 +176,7 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp
+                shadowElevation = 0.dp
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
                     Row(
@@ -222,12 +215,12 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp
+                shadowElevation = 0.dp
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
                     Text("字符类型", style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CharTypeCard("A-Z", "大写", state.includeUppercase, { viewModel.onUppercaseChanged(!state.includeUppercase) }, Modifier.weight(1f).aspectRatio(1f))
                         CharTypeCard("a-z", "小写", state.includeLowercase, { viewModel.onLowercaseChanged(!state.includeLowercase) }, Modifier.weight(1f).aspectRatio(1f))
                         CharTypeCard("0-9", "数字", state.includeNumbers, { viewModel.onNumbersChanged(!state.includeNumbers) }, Modifier.weight(1f).aspectRatio(1f))
@@ -258,6 +251,10 @@ fun GeneratorScreen(
                 }
             }
         }
+        MiPassBottomBar(
+            currentRoute = NavRoutes.Generator.route,
+            onNavigate = onNavigate
+        )
     }
 }
 
@@ -281,7 +278,7 @@ private fun CharTypeCard(label: String, subtitle: String, selected: Boolean, onC
             }
             if (selected) {
                 Surface(
-                    modifier = Modifier.size(16.dp).align(Alignment.TopEnd),
+                    modifier = Modifier.size(16.dp).align(Alignment.TopEnd).offset(x = (-2).dp, y = 2.dp),
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primary
                 ) {

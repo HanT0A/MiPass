@@ -7,15 +7,10 @@ import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.hanzg.mipass.data.local.AppPreferences
-import com.hanzg.mipass.data.local.AppSettings
 import com.hanzg.mipass.ui.navigation.MiPassNavHost
 import com.hanzg.mipass.ui.screens.MasterPasswordScreenMode
 import com.hanzg.mipass.ui.screens.MasterPasswordSetupScreen
@@ -26,7 +21,7 @@ import com.hanzg.mipass.utils.KeyStoreManager
 import com.hanzg.mipass.utils.LocaleHelper
 import com.hanzg.mipass.utils.AuthState
 import com.hanzg.mipass.utils.MasterPasswordManager
-import com.hanzg.mipass.utils.SelfDestructManager
+
 import dagger.hilt.EntryPoint
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
@@ -37,7 +32,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import java.util.Locale
 import javax.inject.Inject
 
 @EntryPoint
@@ -46,7 +40,6 @@ interface MainActivityEntryPoint {
     fun appPreferences(): AppPreferences
     fun masterPasswordManager(): MasterPasswordManager
     fun biometricPromptManager(): BiometricPromptManager
-    fun selfDestructManager(): SelfDestructManager
     fun localeHelper(): LocaleHelper
     fun keyStoreManager(): KeyStoreManager
 }
@@ -56,13 +49,29 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     companion object {
         @Volatile
-        var skipAuthOnce = false
+        private var _skipAuthOnce = false
         @Volatile
-        var skipNextLockCheck = false
+        private var _skipNextLockCheck = false
+
+        fun requestAuthBypass() {
+            _skipAuthOnce = true
+            _skipNextLockCheck = true
+        }
+
+        fun consumeSkipAuthOnce(): Boolean {
+            val v = _skipAuthOnce
+            _skipAuthOnce = false
+            return v
+        }
+
+        fun consumeSkipNextLockCheck(): Boolean {
+            val v = _skipNextLockCheck
+            _skipNextLockCheck = false
+            return v
+        }
     }
 
     @Inject lateinit var biometricPromptManager: BiometricPromptManager
-    @Inject lateinit var selfDestructManager: SelfDestructManager
     @Inject lateinit var localeHelper: LocaleHelper
     @Inject lateinit var masterPasswordManager: MasterPasswordManager
 
@@ -74,8 +83,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private var authState: AuthState = AuthState.OOBE
     private var biometricGeneration = 0
-    private var autoTriggerBio = true
-    private var isAutoBioCall = false
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val mainEntryPoint by lazy {
         EntryPoints.get(applicationContext, MainActivityEntryPoint::class.java)
@@ -83,6 +91,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     override fun attachBaseContext(newBase: Context?) {
         val base = newBase ?: return super.attachBaseContext(null)
+
         val wrapped = try {
             EntryPoints.get(base.applicationContext, MainActivityEntryPoint::class.java)
                 .localeHelper().wrapContext(base)
@@ -91,7 +100,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
 
     fun reapplyLocale() {
-        skipAuthOnce = true
+        requestAuthBypass()
         recreate()
     }
 
@@ -128,8 +137,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             return
         }
 
-        if (MainActivity.skipAuthOnce) {
-            MainActivity.skipAuthOnce = false
+        if (consumeSkipAuthOnce()) {
             hasAuthenticated = true
             authState = AuthState.DONE
             pauseTimestamp = System.currentTimeMillis()
@@ -140,13 +148,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-        lifecycle.addObserver(AppLifecycleObserver())
 
-        // Determine auth state
-        val biometricEnabled = runBlocking {
-            try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
-            catch (_: Exception) { false }
-        }
+        // 读取当前设置用于初始化观察者缓存
+        val settings = prefs?.read()
+        val biometricEnabled = settings?.biometricEnabled ?: false
+        val lockTimeout = settings?.lockTimeoutSeconds ?: 60
+        val observer = AppLifecycleObserver()
+        observer.cachedBiometricEnabled = biometricEnabled
+        observer.cachedLockTimeout = lockTimeout
+        lifecycle.addObserver(observer)
         when {
             !masterPasswordManager.hasMasterPassword() -> {
                 authState = AuthState.OOBE
@@ -154,158 +164,118 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             }
             else -> {
                 authState = AuthState.UNLOCK
-                // 统一显示密码页，生物识别按钮由 renderSetupScreen 根据设置决定是否显示
                 removePrivacyOverlay()
-                renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                val bioReady = biometricPromptManager.canAuthenticate() is BiometricResult.Ready
+                val requirePwd = masterPasswordManager.shouldRequireMasterPassword()
+                if (biometricEnabled && bioReady && !requirePwd) {
+                    showPrivacyOverlay()
+                    postSystemVerification()
+                } else if (requirePwd) {
+                    renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "检测到系统安全变更，请使用恢复密钥解锁")
+                } else if (!biometricEnabled) {
+                    renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                } else {
+                    renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "系统验证暂不可用，请检查是否已设置屏幕锁")
+                }
             }
         }
     }
 
-    private fun performBiometricAuth() {
-        val biometricEnabled = runBlocking {
-            try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
-            catch (_: Exception) { false }
-        }
-        val result = biometricPromptManager.canAuthenticate()
-        if (biometricEnabled &&
-            result is com.hanzg.mipass.utils.BiometricResult.Ready &&
-            !masterPasswordManager.shouldRequireMasterPassword()) {
-            authState = AuthState.BIOMETRIC
-            showPrivacyOverlay()
-            val myGen = ++biometricGeneration
+    private fun performSystemVerification() {
+        authState = AuthState.BIOMETRIC
+        showPrivacyOverlay()
+        val myGen = ++biometricGeneration
 
-            try {
-                val keyStoreManager = mainEntryPoint.keyStoreManager()
-                val kek = keyStoreManager.getOrCreateKEK()
-                val dekPrefs = getSharedPreferences("mipass_dek_prefs", Context.MODE_PRIVATE)
-                val ivB64 = dekPrefs.getString("dek_iv", null) ?: throw IllegalStateException("No DEK IV")
-                val iv = Base64.decode(ivB64, Base64.NO_WRAP)
-                val cipher = keyStoreManager.getDecryptCipher(kek, iv)
+        try {
+            val keyStoreManager = mainEntryPoint.keyStoreManager()
+            val kek = keyStoreManager.getOrCreateKEK()
+            val dekPrefs = getSharedPreferences("mipass_dek_prefs", Context.MODE_PRIVATE)
+            val ivB64 = dekPrefs.getString("dek_iv", null) ?: throw IllegalStateException("No DEK IV")
+            val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+            val cipher = keyStoreManager.getDecryptCipher(kek, iv)
 
-                biometricPromptManager.showPromptWithCrypto(
-                    activity = this,
-                    cipher = cipher,
-                    title = "身份验证",
-                    subtitle = "验证身份以解锁 MiPass",
-                    negativeButtonText = "使用主密码",
-                    onSuccess = { resultCipher ->
-                        if (myGen != biometricGeneration) return@showPromptWithCrypto
-                        runBlocking(Dispatchers.IO) {
-                            try {
-                                // 使用 TEE 授权的 cipher 解密 DEK
-                                val encryptedDekB64 = getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE)
-                                    .getString("encrypted_dek", null) ?: throw IllegalStateException("No encrypted DEK")
-                                val encryptedDek = Base64.decode(encryptedDekB64, Base64.NO_WRAP)
-                                val decryptedDek = resultCipher.doFinal(encryptedDek)
-                                // 保存解密后的 DEK，供 MiPassDatabase 使用（避免再次访问未授权的 KEK）
-                                getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE).edit()
-                                    .putString("temp_dek", Base64.encodeToString(decryptedDek, Base64.NO_WRAP))
-                                    .commit()
-                                java.util.Arrays.fill(decryptedDek, 0.toByte())
-                                selfDestructManager.resetAttempts()
-                            } catch (e: Exception) {
-                                android.util.Log.e("MiPass", "DEK decryption failed after biometric", e)
-                            }
+            biometricPromptManager.showPromptWithCrypto(
+                activity = this,
+                cipher = cipher,
+                title = "身份验证",
+                subtitle = "使用系统验证解锁 MiPass",
+                onSuccess = { resultCipher ->
+                    if (myGen != biometricGeneration) return@showPromptWithCrypto
+                    var dekOk = false
+                    runBlocking(Dispatchers.IO) {
+                        try {
+                            val encryptedDekB64 = getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE)
+                                .getString("encrypted_dek", null) ?: throw IllegalStateException("No encrypted DEK")
+                            val encryptedDek = Base64.decode(encryptedDekB64, Base64.NO_WRAP)
+                            val decryptedDek = resultCipher.doFinal(encryptedDek)
+                            getSharedPreferences("mipass_dek_prefs", MODE_PRIVATE).edit()
+                                .putString("temp_dek", Base64.encodeToString(decryptedDek, Base64.NO_WRAP))
+                                .commit()
+                            java.util.Arrays.fill(decryptedDek, 0.toByte())
+                            dekOk = true
+                        } catch (e: Exception) {
+                            android.util.Log.e("MiPass", "DEK decryption failed after system verification", e)
                         }
-                        runBlocking {
-                            masterPasswordManager.recordBootId()
-                            masterPasswordManager.recordFingerprintDbHash()
-                        }
-                        authState = AuthState.DONE
-                        hasAuthenticated = true
-                        autoTriggerBio = true
-                        isAutoBioCall = false
-                        removePrivacyOverlay()
-                        renderContent()
-                    },
-                    onError = { errorCode, _ ->
-                        if (myGen != biometricGeneration) return@showPromptWithCrypto
-                        // 用户操作（取消/切换）不计入自毁次数
-                        authState = AuthState.UNLOCK
-                        when (errorCode) {
-                            10 -> {
-                                if (isAutoBioCall) finish()
-                                else { removePrivacyOverlay(); renderSetupScreen(MasterPasswordScreenMode.UNLOCK) }
-                            }
-                            13 -> {
-                                isAutoBioCall = false
-                                removePrivacyOverlay()
-                                renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
-                            }
-                        }
-                    },
-                    onFailed = {
-                        if (myGen != biometricGeneration) return@showPromptWithCrypto
-                        // 仅指纹不匹配时计入自毁失败次数
-                        runBlocking(Dispatchers.IO) { selfDestructManager.recordFailedAttempt() }
                     }
-                )
-                return
-            } catch (_: Exception) {
-                // CryptoObject 设置失败，回退到主密码解锁
-            }
+                    if (!dekOk) {
+                        authState = AuthState.UNLOCK
+                        removePrivacyOverlay()
+                        renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "系统错误：无法解密数据，请尝试恢复密钥解锁")
+                        return@showPromptWithCrypto
+                    }
+                    runBlocking {
+                        masterPasswordManager.recordBootId()
+                    }
+                    authState = AuthState.DONE
+                    hasAuthenticated = true
+                    removePrivacyOverlay()
+                    renderContent()
+                },
+                onError = { errorCode, _ ->
+                    if (myGen != biometricGeneration) return@showPromptWithCrypto
+                    if (errorCode == 10 || errorCode == 13) finish()
+                },
+                onFailed = {
+                    if (myGen != biometricGeneration) return@showPromptWithCrypto
+                    // 生物识别失败，系统自行处理
+                }
+            )
+        } catch (_: Exception) {
+            authState = AuthState.UNLOCK
+            removePrivacyOverlay()
+            renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
         }
-
-        authState = AuthState.UNLOCK
-        removePrivacyOverlay()
-        renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
     }
 
-    private fun renderSetupScreen(mode: MasterPasswordScreenMode) {
+    private fun renderSetupScreen(mode: MasterPasswordScreenMode, unlockHint: String? = null) {
         val mgr = masterPasswordManager
-        val prefsRef = prefs
-        val bioManager = biometricPromptManager
-        val shouldRequirePwd = mgr.shouldRequireMasterPassword()
-        val bioEnabled = runBlocking {
-            try { prefs?.settingsFlow?.first()?.biometricEnabled ?: false }
-            catch (_: Exception) { false }
-        }
-        val bioCapable = bioManager.canAuthenticate() is BiometricResult.Ready
-        val canRetryBio = mode == MasterPasswordScreenMode.UNLOCK && bioEnabled && bioCapable && !shouldRequirePwd
-        val triggerBio = canRetryBio && autoTriggerBio
-        autoTriggerBio = false
         setContent {
-            MiPassTheme(themeMode = prefsRef?.let {
-                val settings by it.settingsFlow.collectAsState(initial = AppSettings())
-                settings.themeMode
-            } ?: "system") {
+            MiPassTheme {
                 MasterPasswordSetupScreen(
                     mode = mode,
                     masterPasswordManager = mgr,
                     onSetupComplete = {
-                        // OOBE 完成 → 直接进入应用（生物识别默认关闭，需用户手动开启）
                         authState = AuthState.DONE
                         hasAuthenticated = true
                         mgr.recordBootId()
-                        mgr.recordFingerprintDbHash()
                         renderContent()
                     },
                     onUnlockSuccess = {
                         authState = AuthState.DONE
                         hasAuthenticated = true
-                        autoTriggerBio = true
                         mgr.recordBootId()
-                        mgr.recordFingerprintDbHash()
                         renderContent()
                     },
                     onExit = { finish() },
-                    onBiometricAuth = if (canRetryBio) { { performBiometricAuth() } } else null
+                    unlockHint = unlockHint
                 )
             }
-        }
-        // 首次显示密码页时自动触发生物识别（系统弹窗覆盖上方）
-        if (triggerBio) {
-            isAutoBioCall = true
-            performBiometricAuth()
         }
     }
 
     private fun renderContent() {
-        val settingsFlow = prefs?.settingsFlow
         setContent {
-            val settings by (settingsFlow?.collectAsState(initial = AppSettings())
-                ?: remember { mutableStateOf(AppSettings()) })
-            MiPassTheme(themeMode = settings.themeMode) {
+            MiPassTheme {
                 MiPassNavHost(pendingImportUri = pendingImportUri) {
                     pendingImportUri = null
                 }
@@ -335,9 +305,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun showPrivacyOverlay() {
         if (privacyOverlay != null) return
-        // 默认显示黑色遮罩（偏安全）
+        val isDark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
         privacyOverlay = View(this).apply {
-            setBackgroundColor(android.graphics.Color.BLACK)
+            setBackgroundColor(
+                if (isDark) android.graphics.Color.parseColor("#FF0C0E12")
+                else android.graphics.Color.parseColor("#FFF6F7FA")
+            )
             alpha = 1f
         }
         (window.decorView as? android.view.ViewGroup)?.addView(
@@ -347,26 +322,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
-        // 异步获取主题色
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            val isDark = try {
-                val themeMode = prefs?.settingsFlow?.first()?.themeMode ?: "system"
-                when (themeMode) {
-                    "dark" -> true
-                    "light" -> false
-                    else -> {
-                        (resources.configuration.uiMode and
-                            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                            android.content.res.Configuration.UI_MODE_NIGHT_YES
-                    }
-                }
-            } catch (_: Exception) { true }
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                privacyOverlay?.setBackgroundColor(
-                    if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-                )
-            }
-        }
     }
 
     private fun removePrivacyOverlay() {
@@ -374,31 +329,26 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         privacyOverlay = null
     }
 
+    private fun postSystemVerification() {
+        mainHandler.post { performSystemVerification() }
+    }
+
     inner class AppLifecycleObserver : LifecycleEventObserver {
-        // 缓存锁定时长和生物识别状态，避免 onResume 中 runBlocking
-        private var cachedLockTimeout: Int = 60
-        private var cachedBiometricEnabled: Boolean = false
+        var cachedLockTimeout: Int = 60
+        var cachedBiometricEnabled: Boolean = false
 
         override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    // 真正切后台时记录时间
                     pauseTimestamp = System.currentTimeMillis()
                     if (hasAuthenticated) showPrivacyOverlay()
-                    // 读取最新的锁定时长和生物识别状态
-                    runBlocking {
-                        try {
-                            val s = prefs?.settingsFlow?.first()
-                            cachedLockTimeout = s?.lockTimeoutSeconds ?: 60
-                            cachedBiometricEnabled = s?.biometricEnabled ?: false
-                        } catch (_: Exception) {
-                            cachedLockTimeout = 60
-                            cachedBiometricEnabled = false
-                        }
+                    val s = prefs?.read()
+                    if (s != null) {
+                        cachedLockTimeout = s.lockTimeoutSeconds
+                        cachedBiometricEnabled = s.biometricEnabled
                     }
                 }
                 Lifecycle.Event.ON_START -> {
-                    // 同步系统生物识别状态：用户可能在设置中关闭了系统生物识别
                     if (cachedBiometricEnabled) {
                         val bioResult = biometricPromptManager.canAuthenticate()
                         if (bioResult !is BiometricResult.Ready) {
@@ -408,32 +358,31 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             }
                         }
                     }
-                    // 导入/导出文件选择器回来后不验证
-                    if (skipNextLockCheck) {
-                        skipNextLockCheck = false
+                    if (consumeSkipNextLockCheck()) {
                         removePrivacyOverlay()
                         return
                     }
                     if (!hasAuthenticated) {
-                        // 验证中途退出再回来 → 重置解锁状态
                         when (authState) {
-                            AuthState.OOBE -> { /* 设置界面已显示，无需额外操作 */ }
-                            AuthState.BIOMETRIC -> {
-                                showPrivacyOverlay()
-                                performBiometricAuth()
-                            }
+                            AuthState.OOBE -> { }
+                            AuthState.BIOMETRIC -> postSystemVerification()
                             AuthState.UNLOCK -> {
-                                // 生物识别开启则优先重试，否则保持主密码解锁
-                                val bioEnabled = cachedBiometricEnabled
-                                if (bioEnabled && !masterPasswordManager.shouldRequireMasterPassword()) {
-                                    showPrivacyOverlay()
-                                    performBiometricAuth()
-                                } else {
+                                val bioReady = biometricPromptManager.canAuthenticate() is BiometricResult.Ready
+                                val requirePwd = masterPasswordManager.shouldRequireMasterPassword()
+                                if (cachedBiometricEnabled && bioReady && !requirePwd) {
+                                    postSystemVerification()
+                                } else if (requirePwd) {
+                                    removePrivacyOverlay()
+                                    renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "检测到系统安全变更，请使用恢复密钥解锁")
+                                } else if (!cachedBiometricEnabled) {
                                     removePrivacyOverlay()
                                     renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                                } else {
+                                    removePrivacyOverlay()
+                                    renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "系统验证暂不可用，请检查是否已设置屏幕锁")
                                 }
                             }
-                            AuthState.DONE -> { /* already authenticated */ }
+                            AuthState.DONE -> { }
                         }
                         return
                     }
@@ -441,16 +390,27 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         hasAuthenticated = false
                         authState = AuthState.UNLOCK
                         removePrivacyOverlay()
-                        renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                        renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "检测到系统安全变更，请使用恢复密钥解锁")
                         return
                     }
                     val elapsed = (System.currentTimeMillis() - pauseTimestamp) / 1000
-                    // lockTimeout == 0 表示即时锁定，每次切后台都需验证
                     val shouldLock = cachedLockTimeout == 0 || (cachedLockTimeout > 0 && elapsed >= cachedLockTimeout)
                     if (shouldLock) {
                         hasAuthenticated = false
-                        // 保留隐私遮罩到生物识别成功，避免应用内容暴露
-                        performBiometricAuth()
+                        val bioReady = biometricPromptManager.canAuthenticate() is BiometricResult.Ready
+                        val requirePwd = masterPasswordManager.shouldRequireMasterPassword()
+                        if (cachedBiometricEnabled && bioReady && !requirePwd) {
+                            postSystemVerification()
+                        } else if (requirePwd) {
+                            removePrivacyOverlay()
+                            renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "检测到系统安全变更，请使用恢复密钥解锁")
+                        } else if (!cachedBiometricEnabled) {
+                            removePrivacyOverlay()
+                            renderSetupScreen(MasterPasswordScreenMode.UNLOCK)
+                        } else {
+                            removePrivacyOverlay()
+                            renderSetupScreen(MasterPasswordScreenMode.UNLOCK, "系统验证暂不可用，请检查是否已设置屏幕锁")
+                        }
                     } else {
                         removePrivacyOverlay()
                     }

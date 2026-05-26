@@ -14,5 +14,5 @@ object UiText {
     const val DELETE_CONFIRM_TITLE = "确认删除"
     const val DELETE_CONFIRM_MSG = "删除后无法恢复，确定要删除这条记录吗？"
     const val NO_PASSWORD = "暂无密码"
-    const val NO_PASSWORD_HINT = "点击右上角 + 添加密码"
+    const val NO_PASSWORD_HINT = "点击 + 新增密码"
 }

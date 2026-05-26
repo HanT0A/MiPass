@@ -29,7 +29,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,8 +56,7 @@ fun MasterPasswordSetupScreen(
     onSetupComplete: () -> Unit,
     onUnlockSuccess: () -> Unit,
     onExit: () -> Unit,
-    onBiometricAuth: (() -> Unit)? = null,
-    showBiometricHint: Boolean = false
+    unlockHint: String? = null
 ) {
     val isSetup = mode == MasterPasswordScreenMode.SETUP
 
@@ -67,8 +70,7 @@ fun MasterPasswordSetupScreen(
             masterPasswordManager = masterPasswordManager,
             onUnlockSuccess = onUnlockSuccess,
             onExit = onExit,
-            hasBiometric = onBiometricAuth != null,
-            onBiometricAuth = onBiometricAuth
+            unlockHint = unlockHint
         )
     }
 }
@@ -82,10 +84,13 @@ private fun SetupContent(
     var confirmPassword by remember { mutableStateOf("") }
     var agreedRisk by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var verifying by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.systemBars)
             .verticalScroll(rememberScrollState())
             .padding(32.dp),
@@ -109,12 +114,12 @@ private fun SetupContent(
         }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "设置主密码",
+            text = "设置密钥",
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "首次使用 MiPass 前，请设置一个强密码作为你的安全凭证",
+            text = "当系统验证不可用时，使用密钥解锁 MiPass",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -124,7 +129,7 @@ private fun SetupContent(
         PasswordTextField(
             value = password,
             onValueChange = { password = it; error = null },
-            label = "设置主密码",
+            label = "设置密钥",
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -138,7 +143,7 @@ private fun SetupContent(
         PasswordTextField(
             value = confirmPassword,
             onValueChange = { confirmPassword = it; error = null },
-            label = "确认主密码",
+            label = "确认密钥",
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -149,7 +154,7 @@ private fun SetupContent(
             Checkbox(checked = agreedRisk, onCheckedChange = { agreedRisk = it; error = null })
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                "我已了解：遗忘主密码将永久丢失所有数据，无法找回",
+                "我已了解：遗忘密钥将永久丢失所有数据，无法找回",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -162,20 +167,30 @@ private fun SetupContent(
         Button(
             onClick = {
                 when {
-                    password.length < 8 -> error = "密码至少 8 位"
+                    password.length < 8 -> error = "密钥至少 8 位"
                     !password.any { it.isLetter() } || !password.any { it.isDigit() } ->
                         error = "必须包含字母和数字"
-                    password != confirmPassword -> error = "两次密码不一致"
-                    else -> when (masterPasswordManager.setMasterPassword(password)) {
-                        SetResult.Success -> onSetupComplete()
-                        SetResult.TooWeak -> error = "密码强度不足"
+                    password != confirmPassword -> error = "两次密钥不一致"
+                    else -> {
+                        val pwd = password
+                        scope.launch {
+                            verifying = true
+                            val result = withContext(Dispatchers.IO) {
+                                masterPasswordManager.setMasterPassword(pwd)
+                            }
+                            verifying = false
+                            when (result) {
+                                SetResult.Success -> onSetupComplete()
+                                SetResult.TooWeak -> error = "密钥强度不足"
+                            }
+                        }
                     }
                 }
             },
-            enabled = password.length >= 8 && password == confirmPassword && agreedRisk,
+            enabled = password.length >= 8 && password == confirmPassword && agreedRisk && !verifying,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("设置主密码")
+            Text(if (verifying) "设置中..." else "设置密钥")
         }
     }
 }
@@ -185,19 +200,20 @@ private fun UnlockContent(
     masterPasswordManager: MasterPasswordManager,
     onUnlockSuccess: () -> Unit,
     onExit: () -> Unit,
-    hasBiometric: Boolean,
-    onBiometricAuth: (() -> Unit)?
+    unlockHint: String? = null
 ) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var verifying by remember { mutableStateOf(false) }
     var lockoutRemaining by remember {
         mutableStateOf(masterPasswordManager.getLockoutRemainingSeconds())
     }
+    val scope = rememberCoroutineScope()
 
-    // 主密码验证页
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.systemBars)
             .verticalScroll(rememberScrollState())
             .padding(32.dp),
@@ -220,21 +236,31 @@ private fun UnlockContent(
         }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "输入主密码",
+            text = "输入密钥",
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "请输入主密码以解锁 MiPass",
+            text = "请输入密钥以解锁 MiPass",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+        if (unlockHint != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                unlockHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Spacer(modifier = Modifier.height(32.dp))
         PasswordTextField(
             value = password,
             onValueChange = { password = it; error = null },
-            label = "主密码",
+            label = "密钥",
             modifier = Modifier.fillMaxWidth(),
             enabled = lockoutRemaining == 0
         )
@@ -248,7 +274,7 @@ private fun UnlockContent(
         if (lockoutRemaining > 0) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "密码输入已冻结，请等待 ${lockoutRemaining} 秒",
+                "密钥输入已冻结，请等待 ${lockoutRemaining} 秒",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.error,
                 fontWeight = FontWeight.Bold
@@ -261,29 +287,31 @@ private fun UnlockContent(
         Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = {
-                when (val result = masterPasswordManager.verifyMasterPassword(password)) {
-                    is com.hanzg.mipass.utils.VerifyResult.Success -> onUnlockSuccess()
-                    is com.hanzg.mipass.utils.VerifyResult.Failed -> {
-                        error = "密码错误，已失败 ${result.attempts} 次"
-                        password = ""
+                val pwd = password
+                scope.launch {
+                    verifying = true
+                    val result = withContext(Dispatchers.IO) {
+                        masterPasswordManager.verifyMasterPassword(pwd)
                     }
-                    is com.hanzg.mipass.utils.VerifyResult.LockedOut -> {
-                        lockoutRemaining = result.remainingSeconds
-                        error = "密码输入已冻结 ${result.remainingSeconds} 秒"
+                    verifying = false
+                    when (result) {
+                        is com.hanzg.mipass.utils.VerifyResult.Success -> onUnlockSuccess()
+                        is com.hanzg.mipass.utils.VerifyResult.Failed -> {
+                            error = "密钥错误，已失败 ${result.attempts} 次"
+                            password = ""
+                        }
+                        is com.hanzg.mipass.utils.VerifyResult.LockedOut -> {
+                            lockoutRemaining = result.remainingSeconds
+                            error = "密钥输入已冻结 ${result.remainingSeconds} 秒"
+                        }
+                        is com.hanzg.mipass.utils.VerifyResult.Error -> error = "系统错误"
                     }
-                    is com.hanzg.mipass.utils.VerifyResult.Error -> error = "系统错误"
                 }
             },
-            enabled = password.isNotEmpty() && lockoutRemaining == 0,
+            enabled = password.isNotEmpty() && lockoutRemaining == 0 && !verifying,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("解锁")
-        }
-        if (hasBiometric) {
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(onClick = onBiometricAuth ?: {}) {
-                Text("使用指纹/面容解锁")
-            }
+            Text(if (verifying) "验证中..." else "解锁")
         }
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {

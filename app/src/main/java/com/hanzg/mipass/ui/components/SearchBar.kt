@@ -23,7 +23,7 @@ fun SearchBar(
     query: String,
     onQueryChanged: (String) -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "搜索密码"
+    placeholder: String = "搜索..."
 ) {
     TextField(
         value = query,

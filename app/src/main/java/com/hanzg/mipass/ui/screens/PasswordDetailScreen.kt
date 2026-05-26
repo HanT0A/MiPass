@@ -59,7 +59,7 @@ import coil.request.ImageRequest
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.*
-import com.hanzg.mipass.data.local.PasswordEntity
+import com.hanzg.mipass.domain.model.Password
 import com.hanzg.mipass.utils.IconMatcher
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.ui.theme.DurationShort
@@ -306,8 +306,8 @@ fun PasswordDetailScreen(
                             modifier = Modifier.size(44.dp)
                         ) {
                             Icon(
-                                imageVector = if (passwordVisible) PhosphorIcons.Regular.EyeSlash
-                                    else PhosphorIcons.Regular.Eye,
+                                imageVector = if (passwordVisible) PhosphorIcons.Regular.Eye
+                                    else PhosphorIcons.Regular.EyeSlash,
                                 contentDescription = if (passwordVisible) "隐藏明文密码" else "显示明文密码",
                                 modifier = Modifier.size(20.dp)
                             )

@@ -2,11 +2,10 @@ package com.hanzg.mipass.utils
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.UserNotAuthenticatedException
 import android.util.Base64
-import androidx.biometric.BiometricManager
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
@@ -15,10 +14,26 @@ import javax.inject.Singleton
 
 @Singleton
 class MasterPasswordManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val keyStoreManager: KeyStoreManager
 ) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("mipass_master_pwd", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences by lazy {
+        try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                "mipass_master_pwd_enc",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (_: Exception) {
+            // Fallback to plain prefs if encrypted storage fails
+            context.getSharedPreferences("mipass_master_pwd", Context.MODE_PRIVATE)
+        }
+    }
     private val lockoutPrefs: SharedPreferences =
         context.getSharedPreferences("mipass_lockout", Context.MODE_PRIVATE)
 
@@ -26,9 +41,9 @@ class MasterPasswordManager @Inject constructor(
         private const val KEY_SALT = "salt"
         private const val KEY_HASH = "hash"
         private const val KEY_LAST_BOOT_ID = "last_boot_id"
+        private const val KEY_MIGRATED = "encrypted_migrated"
         private const val KEY_FAIL_COUNT = "fail_count"
         private const val KEY_LOCKOUT_UNTIL = "lockout_until"
-        private const val KEY_FP_DB_HASH = "fp_db_hash"
         private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
         private const val ITERATIONS = 150_000
         private const val KEY_LENGTH = 256
@@ -37,6 +52,36 @@ class MasterPasswordManager @Inject constructor(
         private val LOCKOUT_TIERS = intArrayOf(3, 6, 10, 20)
         private val LOCKOUT_SECONDS = longArrayOf(30, 120, 600, 3600)
         private val secureRandom = SecureRandom()
+    }
+
+    init {
+        migrateFromPlainStorage()
+    }
+
+    /**
+     * 从旧的 MODE_PRIVATE SharedPreferences 迁移到 EncryptedSharedPreferences
+     */
+    private fun migrateFromPlainStorage() {
+        if (prefs.getBoolean(KEY_MIGRATED, false)) return
+        val oldPrefs = context.getSharedPreferences("mipass_master_pwd", Context.MODE_PRIVATE)
+        val salt = oldPrefs.getString(KEY_SALT, null)
+        val hash = oldPrefs.getString(KEY_HASH, null)
+        val bootId = oldPrefs.getString(KEY_LAST_BOOT_ID, null)
+        if (salt != null || hash != null || bootId != null) {
+            prefs.edit().also { editor ->
+                salt?.let { editor.putString(KEY_SALT, it) }
+                hash?.let { editor.putString(KEY_HASH, it) }
+                bootId?.let { editor.putString(KEY_LAST_BOOT_ID, it) }
+            }.apply()
+            // Verify migration success before clearing old data
+            val migrated = prefs.getString(KEY_HASH, null)
+            if (hash == null || hash == migrated) {
+                prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+                oldPrefs.edit().clear().apply()
+            }
+        } else {
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        }
     }
 
     fun hasMasterPassword(): Boolean {
@@ -53,7 +98,6 @@ class MasterPasswordManager @Inject constructor(
             .apply()
         recordBootId()
         resetLockout()
-        recordFingerprintDbHash()
         return SetResult.Success
     }
 
@@ -76,7 +120,6 @@ class MasterPasswordManager @Inject constructor(
 
         if (java.util.Arrays.equals(storedHash, computedHash)) {
             resetLockout()
-            recordFingerprintDbHash()
             return VerifyResult.Success
         }
 
@@ -112,25 +155,23 @@ class MasterPasswordManager @Inject constructor(
         resetLockout()
     }
 
-    /** Check if fingerprint database changed since last auth */
+    /**
+     * 检测是否需要强制使用恢复密钥解锁
+     * - 重启（boot_id 变更）
+     * - 指纹库变更（KEK 被 Keystore 自动销毁）
+     */
     fun shouldRequireMasterPassword(): Boolean {
         // Check 1: reboot
         val currentBootId = getBootId()
         val storedBootId = prefs.getString(KEY_LAST_BOOT_ID, null)
         if (storedBootId != currentBootId) return true
-        // Check 2: fingerprint database changed
-        val currentFpHash = getFingerprintDbHash()
-        val storedFpHash = prefs.getString(KEY_FP_DB_HASH, null)
-        if (storedFpHash != null && storedFpHash != currentFpHash) return true
+        // Check 2: fingerprint enrollment changed → KEK invalidated by Keystore
+        if (!keyStoreManager.isKEKAvailable()) return true
         return false
     }
 
     fun recordBootId() {
         prefs.edit().putString(KEY_LAST_BOOT_ID, getBootId()).apply()
-    }
-
-    fun recordFingerprintDbHash() {
-        prefs.edit().putString(KEY_FP_DB_HASH, getFingerprintDbHash()).apply()
     }
 
     fun isPasswordStrong(password: String): Boolean = isPasswordValid(password)
@@ -161,16 +202,6 @@ class MasterPasswordManager @Inject constructor(
     private fun getBootId(): String {
         return try {
             java.io.File("/proc/sys/kernel/random/boot_id").readText().trim()
-        } catch (_: Exception) { "unknown" }
-    }
-
-    private fun getFingerprintDbHash(): String {
-        return try {
-            val settingsDb = java.io.File("/data/system/users/0/settings_fingerprint.xml")
-            if (!settingsDb.exists()) return "none"
-            val bytes = settingsDb.readBytes()
-            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-            Base64.encodeToString(digest, Base64.NO_WRAP)
         } catch (_: Exception) { "unknown" }
     }
 }

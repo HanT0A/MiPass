@@ -4,8 +4,8 @@ import androidx.compose.runtime.Immutable
 import android.content.Context
 import android.content.SharedPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,9 +22,6 @@ data class AppSettings(
     val biometricEnabled: Boolean = false,
     val lockEnabled: Boolean = true,
     val lockTimeoutSeconds: Int = 60,
-    val selfDestructEnabled: Boolean = false,
-    val selfDestructAttempts: Int = 0,
-    val selfDestructThreshold: Int = 10,
     val screenshotProtection: Boolean = true
 )
 
@@ -36,7 +33,7 @@ class AppPreferences @Inject constructor(
         context.getSharedPreferences("mipass_settings", Context.MODE_PRIVATE)
 
     private val _settingsFlow = MutableStateFlow(readSettings())
-    val settingsFlow: Flow<AppSettings> = _settingsFlow.asStateFlow()
+    val settingsFlow: StateFlow<AppSettings> = _settingsFlow.asStateFlow()
 
     private fun readSettings(): AppSettings {
         return AppSettings(
@@ -50,9 +47,6 @@ class AppPreferences @Inject constructor(
             biometricEnabled = prefs.getBoolean("biometric_enabled", false),
             lockEnabled = prefs.getBoolean("lock_enabled", true),
             lockTimeoutSeconds = prefs.getInt("lock_timeout_seconds", 60),
-            selfDestructEnabled = prefs.getBoolean("self_destruct_enabled", false),
-            selfDestructAttempts = prefs.getInt("self_destruct_attempts", 0),
-            selfDestructThreshold = prefs.getInt("self_destruct_threshold", 10),
             screenshotProtection = prefs.getBoolean("screenshot_protection", true)
         )
     }
@@ -74,9 +68,6 @@ class AppPreferences @Inject constructor(
     fun setBiometricEnabled(enabled: Boolean) { updateAndNotify { putBoolean("biometric_enabled", enabled) } }
     fun setLockEnabled(enabled: Boolean) { updateAndNotify { putBoolean("lock_enabled", enabled) } }
     fun setLockTimeout(seconds: Int) { updateAndNotify { putInt("lock_timeout_seconds", seconds) } }
-    fun setSelfDestructEnabled(enabled: Boolean) { updateAndNotify { putBoolean("self_destruct_enabled", enabled) } }
-    fun setSelfDestructAttempts(attempts: Int) { updateAndNotify { putInt("self_destruct_attempts", attempts) } }
-    fun setSelfDestructThreshold(threshold: Int) { updateAndNotify { putInt("self_destruct_threshold", threshold) } }
     fun setScreenshotProtection(enabled: Boolean) { updateAndNotify { putBoolean("screenshot_protection", enabled) } }
 
     fun clearAll() {

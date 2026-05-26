@@ -42,26 +42,40 @@ MiPass 是一款主打"绝对隐私、纯净无干扰、极致安全"的 Android
 
 ```
 启动流程：
-  无主密码 → OOBE 强制设置
-  有主密码 + 重启/指纹库变更 → 强制主密码解锁
-  有主密码 + 正常 → 生物识别（回退主密码）
+  无恢复密钥 → OOBE 强制设置
+  有恢复密钥 + 系统验证开启 + 可用 → BiometricPrompt (BIOMETRIC_STRONG | DEVICE_CREDENTIAL)
+      ├── 成功 → 解密 DEK → 进入应用
+      ├── dismiss → 退出
+      └── 指纹失败 → 系统自行管理
+  有恢复密钥 + 系统验证关闭 → 恢复密钥页面
+  有恢复密钥 + 重启/指纹库变更 → 恢复密钥页面（仅一次）
+  有恢复密钥 + 系统验证开启但不可用 → 恢复密钥页面 + 提示"请检查屏幕锁"
 
-主密码规则：
+恢复密钥（原"主密码"）规则：
   - PBKDF2WithHmacSHA256，150,000 次迭代
   - ≥8 位，必须含字母+数字
   - 零明文存储（仅存盐+哈希）
   - 防爆破：梯次锁定（3次→30秒, 6次→2分钟, 10次→10分钟, 20次→1小时）
   - 重启/指纹库变更检测：/proc/sys/kernel/random/boot_id + settings_fingerprint.xml SHA-256
+  - 日常解锁不显示恢复密钥页面，仅在系统验证不可用/关闭/安全变更时出现
+  - PBKDF2 验证在 Dispatchers.IO 后台执行，不阻塞 UI 线程
+
+系统验证规则：
+  - BiometricPrompt + DEVICE_CREDENTIAL：指纹/面容 → 回退系统 PIN/图案/密码
+  - showPromptWithCrypto（启动解锁）：DEVICE_CREDENTIAL，无 negativeButtonText
+  - showPrompt（导出/清除验证）：DEVICE_CREDENTIAL，无 negativeButtonText
+  - 系统 PIN/图案为全屏 Activity（Android 安全可信进程，不可改为弹窗样式）
+  - 关闭系统验证需先输入恢复密钥确认身份
 ```
 
 ### 数据库加密 (信封加密 Envelope Encryption)
 
 ```
-用户生物认证/主密码 → Keystore(TEE) 释放 KEK → KEK 解密 DEK → DEK 注入 SQLCipher 开启数据库
+用户系统验证/恢复密钥 → Keystore(TEE) 释放 KEK → KEK 解密 DEK → DEK 注入 SQLCipher 开启数据库
 ```
 
 - **DEK (Data Encryption Key)**: 首次安装随机生成 256 位高熵密钥，SQLCipher 用于全盘透明加密 SQLite
-- **KEK (Key Encryption Key)**: 基于 TEE 硬件级可信执行环境生成，需生物识别或主密码授权使用，存储于 Android Keystore
+- **KEK (Key Encryption Key)**: 基于 TEE 硬件级可信执行环境生成，需系统验证或恢复密钥授权使用，存储于 Android Keystore
 - DEK 经 KEK 加密后存储于 EncryptedSharedPreferences
 
 ### 运行时防护
@@ -71,14 +85,14 @@ MiPass 是一款主打"绝对隐私、纯净无干扰、极致安全"的 Android
 - **剪贴板保护**: 复制时通过 `ClipManager.setPrimaryClip` 写入并标记 `IS_SENSITIVE` (API 33+)，防止被其他应用读取（Vivo OEM 剪贴板历史无法程序化清除）
 - **内存脱敏**: ViewModel 持有的密码字段在非必要情况下保持脱敏状态
 - **密码输入掩码**: 所有密码输入框默认显示 ······，眼睛图标切换明文
-- **自毁机制**: 连续 10 次验证失败 → 擦除数据库/快照/DEK/KeyStore/偏好设置 → killProcess
+- **防爆破**: 恢复密钥梯次锁定（3→30s, 6→2min, 10→10min, 20→1hr），系统验证由系统层自行管理重试限次
 
 ### 新增安全组件
 
 | 文件 | 功能 |
 |------|------|
-| `utils/MasterPasswordManager.kt` | 主密码 PBKDF2 哈希、验证、梯次锁定、重启/指纹检测 |
-| `utils/SelfDestructManager.kt` | 自毁失败计数、触发擦除 |
+| `utils/MasterPasswordManager.kt` | 恢复密钥 PBKDF2 哈希（IO 后台）、验证、梯次锁定、重启/指纹检测 |
+| `utils/BiometricPromptManager.kt` | 系统验证封装：canAuthenticate (BIOMETRIC_STRONG\|DEVICE_CREDENTIAL)、showPrompt、showPromptWithCrypto |
 | `utils/LocaleHelper.kt` | 运行时语言切换 |
 | `data/local/AppPreferences.kt` | SharedPreferences 封装 + StateFlow 响应式读取 |
 | `ui/screens/MasterPasswordSetupScreen.kt` | OOBE 设置/解锁界面 |
@@ -133,20 +147,24 @@ MiPass 是一款主打"绝对隐私、纯净无干扰、极致安全"的 Android
 
 ### 设置控制中心
 
-- **安全设置**: 修改主密码、生物识别验证、自动锁定延时、剪贴板清除延时、防截屏保护、安全自毁机制
+- **安全设置**: 修改恢复密钥、系统验证、自动锁定延时、剪贴板清除延时、防截屏保护
 - **数据与备份**: 数据导出、数据导入与恢复、数据快照管理、安全擦除所有数据
 - **通用设置**: 主题风格、显示语言、密码生成偏好
 - **关于**: 版本信息、隐私政策、应用权限说明
 - **交互**: 简单选择（主题/语言/剪贴板延时/锁定延时）使用 ModalBottomSheet（12dp 顶部圆角），高风险操作保留 AlertDialog
 - **代码组织**: 拆分为 `SettingsScreen.kt` + `SettingsDialogs.kt` + `SettingsBottomSheets.kt`
 
-## 导入导出协议 (.mipass)
+## 导入导出协议
 
-### 导出管线
-UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → AES-GCM 加密 → 写入 .mipass 文件 → FileProvider 唤起分享面板
+### 加密格式 (.mipass)
+导出管线：序列化 JSON → PBKDF2(提取码) 派生密钥 → AES-GCM 加密 → 写入 .mipass → FileProvider 分享/SAF 保存
+导入管线：读取 .mipass → 输入提取码解密 → 反序列化 → 去重 (name+account / url+account) → insert/覆盖
 
-### 导入管线
-拦截 .mipass MIME type → 提取文件流 → 输入提取码解密 JSON → 反序列化 → 去重 (name+account / url+account) → insert
+### 通用格式 (JSON / CSV)
+导出管线：序列化 JSON/CSV → 写入 .json/.csv 明文文件 → FileProvider 分享/SAF 保存
+导入管线：读取 .json/.csv → 解析字段 → 去重 → insert/覆盖
+CSV 固定表头：name,account,password,url,category,notes,type（name/account/password 必填）
+入口：数据导出 → 身份验证 → 选择格式；数据导入 → 选择文件 → 自动检测格式
 
 ## 自动快照机制
 
@@ -258,27 +276,30 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] 边缘到边缘：从 enableEdgeToEdge() 迁移为手动 setDecorFitsSystemWindows + Scaffold contentWindowInsets 控制
 
 **认证与安全**
-- [x] 主密码系统：PBKDF2+SHA256 哈希，≥8位含字母+数字，OOBE 首次强制设置
-- [x] 风险确认：设置主密码前勾选"遗忘将永久丢失数据"
+- [x] 恢复密钥系统：PBKDF2+SHA256 哈希，≥8位含字母+数字，OOBE 首次强制设置
+- [x] 风险确认：设置前勾选"遗忘将永久丢失数据"
 - [x] 防爆破：梯次锁定（3次→30秒, 6次→2分钟, 10次→10分钟, 20次→1小时）
-- [x] 重启/指纹库变更 → 强制要求主密码解锁
-- [x] 生物识别解锁：冷启动生物认证，检查系统是否录入指纹/面容
-- [x] 切后台锁定延时：ON_STOP 记录时间戳，ON_START 检查超时（即时/1分钟/5分钟/15分钟）
-- [x] 即时锁定：lockTimeout==0 每次切后台强制重新认证
-- [x] 自毁机制：连续输错 10 次擦除整库及快照
-- [x] 隐私模糊遮罩：切后台时覆盖黑色遮罩
+- [x] 重启/指纹库变更 → 强制要求恢复密钥解锁
+- [x] 系统验证：BiometricPrompt + DEVICE_CREDENTIAL（指纹/面容 → 设备PIN/图案回退）
+- [x] 恢复密钥隐藏：日常解锁不显示，仅系统验证不可用/关闭/安全变更时出现
+- [x] 关闭系统验证需先验证恢复密钥（PBKDF2 在 IO 后台执行）
+- [x] 切后台锁定延时：ON_STOP 记录时间，ON_START 检查超时（即时/1/3/5分钟/永不）
+- [x] 系统弹窗延迟渲染：Handler.post 确保 Activity 完全 resumed 后弹窗
+- [x] 启动闪避恢复密钥页：onCreate 中初始化 AppLifecycleObserver 缓存值
+- [x] 隐私模糊遮罩：切后台覆盖，颜色随主题
 - [x] FLAG_SECURE 防截屏/录屏
-- [x] 清除所有数据：生物验证 + 手打 DELETE 确认
-- [x] 剪贴板保护：copyText() 使用 IS_SENSITIVE 标记 (API 33+)，自动清理已移除 (Vivo OEM 限制)
-- [x] 启动/锁屏退出重入黑屏修复：hasAuthenticated 条件控制隐私遮罩
-- [x] 隐私遮罩颜色跟随主题：浅色模式白色、深色模式黑色
-- [x] 生物识别默认关闭 (biometricEnabled=false)，需用户手动开启
-- [x] 生物识别竞态防护：generation counter 阻止过期回调污染新认证
-- [x] 生物识别 errorCode 处理：5 (取消/后台) 保持遮罩，10/13 (用户返回) 显示解锁页
-- [x] ON_START/解锁重试生物识别：biometricEnabled 时自动重试
-- [x] Activity 重建保护：onSaveInstanceState 维持认证状态，配置变更无需重新认证
-- [x] skipNextLockCheck：导入/导出文件选择器返回时跳过锁超时
-- [x] 导出验证流程：生物识别优先，不可用时回退主密码
+- [x] 清除所有数据：系统验证（开启时）/ 恢复密钥验证（关闭时）→ 手打 DELETE 确认
+- [x] 导出验证：系统验证弹窗 → dismiss 直接取消，不跳到恢复密钥
+- [x] 剪贴板保护：IS_SENSITIVE 标记 (API 33+)
+- [x] 隐私遮罩颜色跟随主题
+- [x] 系统验证默认关闭 (biometricEnabled=false)
+- [x] 竞态防护：generation counter 阻止过期回调
+- [x] Activity 重建保护：onSaveInstanceState 维持认证状态
+- [x] skipNextLockCheck：文件选择器返回时跳过锁超时
+- [x] 点击动效适配卡片形状：PasswordCard clip(RoundedCornerShape) 约束水波纹
+- [x] CharTypeCard 勾选标记向内偏移，不贴卡片边缘
+- [x] VaultScreen 加载态：首帧转圈+"正在加载中..."，数据就绪后搜索框+列表同步显示
+- [x] collectAsState 添加 initial 值，避免首帧等待 StateFlow 首次发射
 
 **数据管理**
 - [x] CRUD：新增/编辑（ModalBottomSheet）/查看/删除
@@ -287,8 +308,10 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] 密码生成器：Fisher-Yates 洗牌，长度 4-64，大小写/数字/符号勾选
 - [x] 微型生成器：单击 Shuffle 图标刷新密码，长按打开配置面板
 - [x] 导出 .mipass：身份验证 → 风险提示 → 设定提取码 → AES-GCM 加密全量导出
+- [x] 导出通用格式：身份验证 → 选择格式 → JSON/CSV 明文导出
 - [x] 导出保存方式：系统分享 + SAF 保存到本地文件夹
 - [x] 导入 .mipass：SAF 选择文件 → 提取码 → 合并策略（合并/覆盖）
+- [x] 导入通用格式：SAF 选择文件 → 自动检测 JSON/CSV → 合并策略
 - [x] 自动快照：写操作后自动生成，FIFO 保留 5 份
 
 **设置与个性化**
@@ -296,10 +319,10 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] 主题：跟随系统/浅色/深色，即时切换
 - [x] 语言：简体中文/English，"跟随系统"已移除，默认 zh，English 暂不可用提示
 - [x] 生成器默认规则：长度+字符类型复选框，持久化
-- [x] 生物识别解锁（独立开关，biometricEnabled 默认 false）
+- [x] 系统验证开关（biometricEnabled，默认 false），关闭需验证恢复密钥
 - [x] 切后台锁定延时（独立设置）
-- [x] 修改主密码（验证当前密码 → 设置新密码）
-- [x] 密码显隐控制：MasterPasswordSetupScreen 双密码字段、导出对话框、MasterPasswordDialog 三字段全部支持眼睛图标切换
+- [x] 修改恢复密钥（验证当前密码 → 设置新密码，PBKDF2 后台执行）
+- [x] 密码显隐控制：所有密码字段支持眼睛图标切换
 - [x] 设置页剪贴板清理行及 ClipboardBottomSheet 已删除
 
 **密码输入掩码**
@@ -321,7 +344,7 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] "网址" 统一改为 "Web"
 - [x] 分类为空时自动保存为"其他"
 - [x] 全站名词与描述重审优化（直观、简洁、易懂）
-- [x] 自毁机制设置行去除"上限n次"描述，仅显示开/关状态
+- [x] 自毁机制已移除（系统验证失败由系统自行管理，恢复密钥由梯次锁定管理）
 - [x] 密码生成偏好显示格式："长度 / A-Z+a-z+0-9+!@#"
 - [x] 密码库去除分类分组，直接平铺显示数据卡片（`buildFlatList()` 替代 `buildTreeData()`）
 - [x] 占位符文案优化："搜索..."、"手机号 / 邮箱"、"点击右侧 Shuffle 生成"、"备注信息"
@@ -340,18 +363,32 @@ UI 勾选数据 + 6 位提取码 → 序列化 JSON → PBKDF2 派生密钥 → 
 - [x] SettingsBottomSheets 形状统一使用 `MaterialTheme.shapes.large`
 - [x] GeneratorScreen StrengthBar 硬编码颜色提取为 `WarningAmber` / `WarningOrange`（Color.kt）
 - [x] ImportProgressDialog 空 confirmButton 改为 Spacer + dismissButton = null
+- [x] MasterPasswordSetupScreen 适配深色模式：根 Column 添加 `.background(MaterialTheme.colorScheme.background)`
 - [x] MasterPasswordSetupScreen 增加 `windowInsetsPadding(WindowInsets.systemBars)`
 - [x] SettingsBottomSheets 移除未使用的 `RoundedCornerShape` import
 
+**2026-05-25 综合审计与优化 (代码审查 + 安全审计 + 性能分析 + 架构审查)**
+- [x] 密码生成器：`kotlin.random.Random` → `java.security.SecureRandom`（密码学安全随机数）
+- [x] 快照加密：密钥由 DEK 通过 HMAC-SHA256 派生，不再明文嵌入文件（CRITICAL 安全修复）
+- [x] DEK 解密失败不再静默进入应用，回退到恢复密钥解锁页并提示错误
+- [x] PBKDF2 操作全站统一使用 `withContext(Dispatchers.IO)`，消除主线程阻塞（SettingsScreen MasterPasswordDialog + 导出验证）
+- [x] 冷启动/ON_STOP 生命周期回调中 `runBlocking` 替换为 `prefs.read()` 同步读取，消除主线程阻塞
+- [x] VaultScreen LazyColumn 回调使用 `remember(item.id)` 包装，消除搜索输入时的全量重组
+- [x] GeneratorScreen 三处 Surface 卡片 `shadowElevation` 统一为 `0.dp`（与设计规范一致）
+- [x] VaultScreen 移除 3 个未使用 import（IntrinsicSize / heightIn / ExposedDropdownMenuDefaults）
+- [x] 使用指南移除已删除的自毁机制描述
+- [x] SnapshotManager 新增 `KeyStoreManager` 依赖用于 DEK 派生快照密钥
+- [x] KeyStoreManager 新增 `getDEK()` 方法 + `@ApplicationContext` 依赖
+- [x] `AppLifecycleObserver.cachedLockTimeout` / `cachedBiometricEnabled` 改为外部可初始化
+
 ### 已知问题
 
-- [ ] **底部导航栏上方白条**：NavigationBar 与内容区域之间存在约 16-20dp 宽的白条，底色为白色/浅灰。已尝试：themes.xml windowBackground/navigationBarColor、NavigationBar windowInsets、Scaffold contentWindowInsets。待进一步排查。
-- [ ] **English 本地化未完成**：所有 UI 文本为硬编码中文，语言切换仅影响系统组件，应用内仍显示中文
-- [ ] **Vivo 剪贴板历史无法清除**：Vivo OEM ROM 限制，ClipManager 的 IS_SENSITIVE 标记仅阻止其他应用读取，无法清空系统剪贴板历史
+- [ ] **底部导航栏上方白条**：NavigationBar 与内容区域之间存在白条，已尝试多种方案。待进一步排查。
+- [ ] **English 本地化未完成**：所有 UI 文本为硬编码中文，语言切换仅影响系统组件
+- [ ] **Vivo 剪贴板历史无法清除**：Vivo OEM ROM 限制
 
 ### 待开发
 - [ ] 密码过期提醒
-- [ ] 主密码修改历史/密码强度计
 - [ ] 暗码/伪密码（duress password）功能
 - [ ] UI/集成测试
 - [ ] CI/CD 配置

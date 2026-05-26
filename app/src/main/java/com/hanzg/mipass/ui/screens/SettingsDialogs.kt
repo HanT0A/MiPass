@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 
 import com.hanzg.mipass.data.local.AppSettings
 import com.hanzg.mipass.utils.BiometricPromptManager
-import com.hanzg.mipass.utils.SelfDestructManager
+
 import com.hanzg.mipass.ui.components.PasswordTextField
 
 @Composable
@@ -68,10 +68,10 @@ fun GeneratorRuleDialog(
                     steps = 59
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                CheckboxRow("大写字母 (A-Z)", uppercase) { uppercase = it }
-                CheckboxRow("小写字母 (a-z)", lowercase) { lowercase = it }
-                CheckboxRow("数字 (0-9)", digits) { digits = it }
-                CheckboxRow("符号 (!@#\$)", symbols) { symbols = it }
+                CheckboxRow("大写字母 A-Z", uppercase) { uppercase = it }
+                CheckboxRow("小写字母 a-z", lowercase) { lowercase = it }
+                CheckboxRow("数字 0-9", digits) { digits = it }
+                CheckboxRow("符号 !@#\$", symbols) { symbols = it }
             }
         },
         confirmButton = {
@@ -108,22 +108,22 @@ fun BiometricToggleDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("生物识别解锁") },
+        title = { Text("系统验证") },
         text = {
             Column {
                 Text(
-                    if (lockEnabled) "当前已开启，使用系统指纹/面容解锁 MiPass"
-                    else "开启后，打开 MiPass 时会使用系统指纹/面容进行身份验证",
+                    if (lockEnabled) "当前已开启，使用系统指纹/面容/设备密码解锁 MiPass"
+                    else "开启后，打开 MiPass 时会使用系统生物识别或设备密码进行身份验证",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 val canAuth = biometricManager.canAuthenticate()
                 Text(
                     when (canAuth) {
-                        is com.hanzg.mipass.utils.BiometricResult.Ready -> "系统已配置生物识别，可以使用"
-                        is com.hanzg.mipass.utils.BiometricResult.NoHardware -> "设备不支持生物识别"
-                        is com.hanzg.mipass.utils.BiometricResult.NotEnrolled -> "系统未录入指纹/面容，请先到系统设置中录入"
-                        else -> "生物识别暂不可用"
+                        is com.hanzg.mipass.utils.BiometricResult.Ready -> "系统验证可用"
+                        is com.hanzg.mipass.utils.BiometricResult.NoHardware -> "设备不支持系统验证"
+                        is com.hanzg.mipass.utils.BiometricResult.NotEnrolled -> "系统未设置屏幕锁，请先到系统设置中设置"
+                        else -> "系统验证暂不可用"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -143,52 +143,6 @@ fun BiometricToggleDialog(
 }
 
 @Composable
-fun SelfDestructDialog(
-    enabled: Boolean,
-    maxAttempts: Int,
-    onToggle: (Boolean) -> Unit,
-    onThresholdChange: (Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("自毁机制") },
-        text = {
-            Column {
-                CheckboxRow("启用自毁机制", enabled) { onToggle(it) }
-                if (enabled) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text(
-                        "连续失败上限：",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    val options = listOf(5, 10, 15, 20)
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        options.forEach { n ->
-                            FilterChip(
-                                selected = maxAttempts == n,
-                                onClick = { onThresholdChange(n) },
-                                label = { Text("${n}次") },
-                                modifier = Modifier.padding(end = 6.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "开启后，连续输错 $maxAttempts 次主密码/生物认证将自动擦除所有本地数据及快照，不可恢复。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
-}
-
-@Composable
 fun MasterPasswordDialog(
     hasPassword: Boolean,
     onSet: (String) -> Unit,
@@ -203,14 +157,14 @@ fun MasterPasswordDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (hasPassword) "修改主密码" else "设置主密码") },
+        title = { Text(if (hasPassword) "修改密钥" else "设置密钥") },
         text = {
             Column {
                 if (hasPassword) {
                     PasswordTextField(
                         value = currentPwd,
                         onValueChange = { currentPwd = it; error = null },
-                        label = "当前密码",
+                        label = "当前密钥",
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -218,14 +172,14 @@ fun MasterPasswordDialog(
                 PasswordTextField(
                     value = newPwd,
                     onValueChange = { newPwd = it; error = null },
-                    label = "新密码",
+                    label = "新密钥",
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 PasswordTextField(
                     value = confirmPwd,
                     onValueChange = { confirmPwd = it; error = null },
-                    label = "确认新密码",
+                    label = "确认新密钥",
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (error != null) {
@@ -237,8 +191,8 @@ fun MasterPasswordDialog(
         confirmButton = {
             TextButton(onClick = {
                 when {
-                    newPwd.length < 8 -> error = "密码至少 8 位，需包含字母和数字"
-                    newPwd != confirmPwd -> error = "两次密码不一致"
+                    newPwd.length < 8 -> error = "密钥至少 8 位，需包含字母和数字"
+                    newPwd != confirmPwd -> error = "两次密钥不一致"
                     else -> {
                         if (hasPassword) onChange(currentPwd, newPwd) else onSet(newPwd)
                         onDismiss()
@@ -271,7 +225,7 @@ fun PasscodeDialog(
                 OutlinedTextField(
                     value = passcode,
                     onValueChange = onPasscodeChanged,
-                    label = { Text("6 位数字提取码") },
+                    label = { Text("提取码") },
                     isError = passcodeError != null,
                     supportingText = passcodeError?.let { { Text(it) } },
                     singleLine = true,
@@ -293,7 +247,7 @@ fun PasscodeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = !isLoading && passcode.length == 6) { Text("确认") }
+            TextButton(onClick = onConfirm, enabled = !isLoading && passcode.length >= 8 && passcode.any { it.isLetter() } && passcode.any { it.isDigit() }) { Text("确认") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !isLoading) { Text("取消") }
@@ -309,12 +263,12 @@ fun ScreenshotDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("防截屏保护") },
+        title = { Text("防截屏") },
         text = {
             Column {
                 Text(
-                    if (screenshotProtection) "已开启：禁止截图和录屏，多任务界面显示黑色遮罩。"
-                    else "已关闭：允许截图和录屏。",
+                    if (screenshotProtection) "禁止截图和录屏，多任务界面显示黑色遮罩。"
+                    else "允许截图和录屏。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -339,12 +293,17 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "MiPass 是一款纯本地离线密码管理工具。\n\n" +
-                            "1. 本应用完全不联网，不会上传、收集或分享您的任何数据。\n\n" +
-                            "2. 所有密码数据仅存储在您的设备本地，使用 AES-256 加密保护。\n\n" +
-                            "3. 应用不包含任何第三方 SDK、广告、统计或追踪代码。\n\n" +
-                            "4. 导出 .mipass 文件由您自行保管，应用不会上传至任何服务器。\n\n" +
-                            "5. 生物识别数据仅使用系统 API 进行本地验证，应用不会读取或存储生物特征。",
+                    "MiPass 是一款纯本地离线的密码管理工具，你的数据只属于你。\n\n" +
+                            "零网络\n" +
+                            "本应用不含任何网络通信代码，不会也无法上传、收集或分享你的任何数据。\n\n" +
+                            "本地加密\n" +
+                            "所有密码数据仅保存在你的设备上，使用 AES-256 信封加密，解密密钥由设备安全硬件保管。\n\n" +
+                            "无第三方\n" +
+                            "不含任何第三方 SDK、广告、统计或追踪代码。\n\n" +
+                            "导出文件\n" +
+                            ".mipass 导出文件由你自行保管，应用无法上传至任何服务器。\n\n" +
+                            "生物识别\n" +
+                            "指纹/面容验证仅调用系统接口，生物特征始终存储在设备安全硬件中，应用不会读取。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -361,16 +320,30 @@ fun UsageGuideDialog(onDismiss: () -> Unit) {
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "添加密码\n" +
-                            "底部 App/Web 标签页，点右上角 + 新建。App 类记录应用账号，Web 类记录网站登录信息。\n\n" +
+                    "添加与编辑\n" +
+                            "添加   右上角 + → 选择 App（应用账号）或 Web（网站登录）→ 填写保存\n" +
+                            "编辑   点击条目修改，图标可自定义（支持本地图片）\n" +
+                            "删除   编辑页底部删除按钮，需确认\n\n" +
                             "密码生成器\n" +
-                            "新建或编辑时，点密码框右侧 ⟳ 图标随机生成强密码；长按可调节长度和字符类型。底部「生成器」标签页可独立使用。\n\n" +
-                            "搜索与分类\n" +
-                            "顶部搜索框支持按名称/账号模糊搜索，分类下拉可快速筛选。\n\n" +
-                            "数据备份\n" +
-                            "设置 → 数据导出，设置 6 位提取码生成 .mipass 加密备份文件。导入时选择合并或覆盖。可在设置中手动保存数据快照（最多 5 份）。\n\n" +
-                            "安全保护\n" +
-                            "切后台自动模糊遮罩 · 防截屏录屏 · 剪贴板定时清理 · 连续输错密码可触发自毁擦除所有数据。主密码遗忘无法找回，请务必牢记。",
+                            "快速生成   编辑页密码框右侧 Shuffle 图标，点击生成，长按调整长度和字符类型\n" +
+                            "独立使用   底部「生成器」Tab，调节范围 4-64，实时预览强度\n\n" +
+                            "数据导出\n" +
+                            "   设置 → 数据导出 → 验证身份 → 选择格式\n" +
+                            "   · .mipass 加密 — 需设提取码，AES-256 加密\n" +
+                            "   · JSON / CSV 通用 — 明文，适合迁移至其他工具\n\n" +
+                            "数据导入\n" +
+                            "   设置 → 数据导入与恢复 → 选择文件\n" +
+                            "   支持 .mipass / .json / .csv 格式\n" +
+                            "   合并 — 保留现有数据，仅导入不重复的新条目\n" +
+                            "   覆盖 — 清空当前数据后导入（不可恢复）\n\n" +
+                            "数据快照\n" +
+                            "   设置 → 数据快照 → 保存当前快照\n" +
+                            "   最多保留 5 份历史版本，点击任一版本恢复\n\n" +
+                            "安全机制\n" +
+                            "   恢复密钥   访问应用必需，遗忘不可找回\n" +
+                            "   系统验证   指纹 / 面容解锁（可选），生物特征不离开设备\n" +
+                            "   自动锁定   切后台超时可设即时 / 1 / 3 / 5 分钟 / 永不\n" +
+                            "   防截屏 + 后台模糊遮罩 + 剪贴板敏感标记",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -383,19 +356,16 @@ fun UsageGuideDialog(onDismiss: () -> Unit) {
 fun AppPermissionDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("应用权限说明") },
+        title = { Text("应用权限") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "MiPass 申请的权限及用途：\n\n" +
-                            "生物识别\n" +
-                            "使用指纹/面容解锁 App，数据仅存储在设备本地安全硬件中，MiPass 不会读取或存储生物特征。\n\n" +
-                            "文件读写\n" +
-                            "仅用于导出和导入 .mipass 加密备份文件，不访问其他任何文件。\n\n" +
+                    "生物识别\n" +
+                            "用于指纹或面容解锁。生物特征仅存于设备安全硬件，应用不读取。\n\n" +
+                            "存储读写\n" +
+                            "仅用于导出和导入 .mipass 备份文件，不访问其他文件。\n\n" +
                             "剪贴板\n" +
-                            "用于临时复制账号/密码，超出设定时间后自动清空，防止其他应用读取。\n\n" +
-                            "防截屏\n" +
-                            "通过系统级 FLAG_SECURE 阻止截图和录屏，防止密码信息通过多任务界面泄露。",
+                            "用于临时复制账号和密码，复制内容标记为敏感信息，防止被其他应用读取。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -413,7 +383,7 @@ fun ExportDisclaimerDialog(
         onDismissRequest = onDismiss,
         title = { Text("重要提示") },
         text = {
-            Text("请妥善保管导出的 .mipass 文件及对应的导出密码。该密码无法找回，一旦遗失将无法恢复文件内容。请勿将其发送到不安全的第三方平台。")
+            Text("请妥善保管导出文件及提取码。提取码无法找回，遗失将无法恢复文件。请勿将文件发送到不安全的平台。")
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("我已了解") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
@@ -428,9 +398,9 @@ fun ImportStrategyDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入策略") },
+        title = { Text("导入方式") },
         text = {
-            Text("请选择数据处理方式：\n\n· 合并（推荐）：跳过重复项，保留现有数据\n· 覆盖：清空当前数据，完全替换为导入数据（不可恢复）")
+            Text("合并：保留现有数据，仅导入不重复的新条目\n\n覆盖：清空当前数据后导入（不可恢复）")
         },
         confirmButton = {
             Row {
@@ -447,12 +417,12 @@ fun ImportStrategyDialog(
 fun ImportProgressDialog() {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("导入中...") },
+        title = { Text("正在导入...") },
         text = {
             Column {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("正在解密导入数据...")
+                Text("正在处理...")
             }
         },
         confirmButton = { Spacer(modifier = Modifier.size(1.dp)) },
@@ -474,6 +444,24 @@ fun ImportResultDialog(
             Text("共 $totalCount 条 · 导入 $importedCount 条 · 跳过 $skippedCount 条")
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
+    )
+}
+
+@Composable
+fun UnencryptedExportWarningDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("安全警告") },
+        text = {
+            Text("导出文件未加密，包含所有密码明文，任何人可读取。建议优先使用 .mipass 加密格式。\n\n请妥善保管，导出后建议立即删除。")
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("我已了解，继续导出") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 

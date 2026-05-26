@@ -1,7 +1,7 @@
 package com.hanzg.mipass.domain.usecase
 
+import java.security.SecureRandom
 import kotlin.math.ln
-import kotlin.random.Random
 import javax.inject.Inject
 
 class GeneratePasswordUseCase @Inject constructor() {
@@ -12,6 +12,8 @@ class GeneratePasswordUseCase @Inject constructor() {
         private const val NUMBERS = "0123456789"
         private const val SYMBOLS = "!@#$%^&*()_+-=[]{}|;:,.<>?"
     }
+
+    private val secureRandom = SecureRandom()
 
     data class PasswordConfig(
         val length: Int = 16,
@@ -42,21 +44,21 @@ class GeneratePasswordUseCase @Inject constructor() {
         // 步骤 1：确保每种选中类型至少包含一个字符
         for (charSet in charSets) {
             if (index < config.length) {
-                password[index] = charSet[Random.nextInt(charSet.length)]
+                password[index] = charSet[secureRandom.nextInt(charSet.length)]
                 index++
             }
         }
 
         // 步骤 2：剩余位置随机从所有字符集中选取
         while (index < config.length) {
-            password[index] = allChars[Random.nextInt(allChars.length)]
+            password[index] = allChars[secureRandom.nextInt(allChars.length)]
             index++
         }
 
         // 步骤 3：Fisher-Yates 洗牌消除非随机前缀
         val shuffled = password.toMutableList()
         for (i in shuffled.lastIndex downTo 1) {
-            val j = Random.nextInt(i + 1)
+            val j = secureRandom.nextInt(i + 1)
             val temp = shuffled[i]
             shuffled[i] = shuffled[j]
             shuffled[j] = temp

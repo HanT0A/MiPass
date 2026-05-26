@@ -11,7 +11,7 @@ import com.hanzg.mipass.utils.ClipboardUtils
 import com.hanzg.mipass.utils.KeyStoreManager
 import com.hanzg.mipass.utils.LocaleHelper
 import com.hanzg.mipass.utils.MasterPasswordManager
-import com.hanzg.mipass.utils.SelfDestructManager
+
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -25,8 +25,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideKeyStoreManager(): KeyStoreManager {
-        return KeyStoreManager()
+    fun provideKeyStoreManager(
+        @ApplicationContext context: Context
+    ): KeyStoreManager {
+        return KeyStoreManager(context)
     }
 
     @Provides
@@ -76,19 +78,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSelfDestructManager(
-        @ApplicationContext context: Context,
-        appPreferences: AppPreferences
-    ): SelfDestructManager {
-        return SelfDestructManager(context, appPreferences)
-    }
-
-    @Provides
-    @Singleton
     fun provideMasterPasswordManager(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        keyStoreManager: KeyStoreManager
     ): MasterPasswordManager {
-        return MasterPasswordManager(context)
+        return MasterPasswordManager(context, keyStoreManager)
     }
 
     @Provides

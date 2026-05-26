@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.hanzg.mipass.data.local.AppPreferences
 import com.hanzg.mipass.domain.usecase.GeneratePasswordUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,8 @@ class GeneratorViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(GeneratorUiState())
     val uiState: StateFlow<GeneratorUiState> = _uiState.asStateFlow()
+
+    private var regenerateJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -74,6 +78,7 @@ class GeneratorViewModel @Inject constructor(
     }
 
     fun regenerate() {
+        regenerateJob?.cancel()
         val state = _uiState.value
         val config = GeneratePasswordUseCase.PasswordConfig(
             length = state.length.toInt(),
@@ -82,8 +87,10 @@ class GeneratorViewModel @Inject constructor(
             includeNumbers = state.includeNumbers,
             includeSymbols = state.includeSymbols
         )
-        val password = generatePasswordUseCase.generate(config)
-        val strength = generatePasswordUseCase.calculateStrength(password, config)
-        _uiState.update { it.copy(password = password, strength = strength) }
+        regenerateJob = viewModelScope.launch(Dispatchers.Default) {
+            val password = generatePasswordUseCase.generate(config)
+            val strength = generatePasswordUseCase.calculateStrength(password, config)
+            _uiState.update { it.copy(password = password, strength = strength) }
+        }
     }
 }

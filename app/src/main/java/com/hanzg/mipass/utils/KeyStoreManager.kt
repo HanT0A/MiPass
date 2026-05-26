@@ -1,7 +1,10 @@
 package com.hanzg.mipass.utils
 
+import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -11,7 +14,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class KeyStoreManager @Inject constructor() {
+class KeyStoreManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     companion object {
         private const val KEYSTORE_ALIAS = "mipass_kek"
@@ -86,6 +91,38 @@ class KeyStoreManager @Inject constructor() {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, kek, GCMParameterSpec(GCM_TAG_LENGTH, iv))
         return cipher
+    }
+
+    /**
+     * 检测 KEK 是否可用（指纹变更后 Keystore 自动销毁 KEK）
+     */
+    fun isKEKAvailable(): Boolean {
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+            keyStore.load(null)
+            if (!keyStore.containsAlias(KEYSTORE_ALIAS)) return false
+            val entry = keyStore.getEntry(KEYSTORE_ALIAS, null) as? KeyStore.SecretKeyEntry
+                ?: return false
+            // Test key usability — catches KeyPermanentlyInvalidatedException
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, entry.secretKey)
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * 获取明文 DEK（由 KEK 解密），调用方负责用完后填充归零
+     */
+    fun getDEK(): ByteArray {
+        val kek = getOrCreateKEK()
+        val dekPrefs = context.getSharedPreferences("mipass_dek_prefs", Context.MODE_PRIVATE)
+        val encryptedDekB64 = dekPrefs.getString("encrypted_dek", null)
+            ?: throw IllegalStateException("No encrypted DEK")
+        val ivB64 = dekPrefs.getString("dek_iv", null)
+            ?: throw IllegalStateException("No DEK IV")
+        val encryptedDek = Base64.decode(encryptedDekB64, Base64.NO_WRAP)
+        val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+        return decryptDEK(kek, encryptedDek, iv)
     }
 
 }

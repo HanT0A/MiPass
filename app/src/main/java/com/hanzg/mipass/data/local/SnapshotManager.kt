@@ -1,7 +1,7 @@
 package com.hanzg.mipass.data.local
 
 import android.content.Context
-import android.util.Base64
+import com.hanzg.mipass.utils.KeyStoreManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,17 +10,16 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import javax.crypto.Cipher
-import javax.crypto.CipherInputStream
-import javax.crypto.CipherOutputStream
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SnapshotManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val keyStoreManager: KeyStoreManager
 ) {
 
     companion object {
@@ -31,29 +30,33 @@ class SnapshotManager @Inject constructor(
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_LENGTH = 128
         private const val AES_KEY_SIZE = 256
+        private const val SNAPSHOT_KEY_INFO = "mipass-snapshot-key-v1"
     }
 
     private val snapshotsDir: File
         get() = File(context.filesDir, SNAPSHOTS_DIR).also { it.mkdirs() }
 
     /**
-     * 创建静默快照：全库数据 → JSON → AES-GCM 加密 → 写入文件
+     * 创建静默快照：全库数据 → JSON → AES-GCM 加密（密钥由 DEK 派生） → 写入文件
      */
     suspend fun createSnapshot(allPasswords: List<PasswordEntity>) = withContext(Dispatchers.IO) {
-        val snapshotKey = generateSnapshotKey()
+        val snapshotKey = deriveSnapshotKey()
         val jsonData = serializeToJson(allPasswords)
         val encrypted = encryptData(jsonData, snapshotKey)
-        writeSnapshotFile(encrypted, snapshotKey)
+        java.util.Arrays.fill(snapshotKey, 0.toByte())
+        writeSnapshotFile(encrypted)
         enforceFifoLimit()
     }
 
     /**
-     * 读取并解密快照
+     * 读取并解密快照（密钥由 DEK 派生）
      */
-    suspend fun restoreSnapshot(snapshotFile: File, key: ByteArray): List<PasswordEntity> =
+    suspend fun restoreSnapshot(snapshotFile: File): List<PasswordEntity> =
         withContext(Dispatchers.IO) {
+            val snapshotKey = deriveSnapshotKey()
             val encrypted = snapshotFile.readBytes()
-            val jsonData = decryptData(encrypted, key)
+            val jsonData = decryptData(encrypted, snapshotKey)
+            java.util.Arrays.fill(snapshotKey, 0.toByte())
             deserializeFromJson(jsonData)
         }
 
@@ -67,12 +70,14 @@ class SnapshotManager @Inject constructor(
             ?: emptyList()
     }
 
-    private fun generateSnapshotKey(): ByteArray {
-        val keyGenerator = KeyGenerator.getInstance("AES")
-        keyGenerator.init(AES_KEY_SIZE)
-        val key = keyGenerator.generateKey()
-        // 返回原始 key 字节，同时存储 Base64 编码到快照文件头部
-        return key.encoded
+    private fun deriveSnapshotKey(): ByteArray {
+        val dek = keyStoreManager.getDEK()
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        val keySpec = SecretKeySpec(dek, "HmacSHA256")
+        mac.init(keySpec)
+        val derived = mac.doFinal(SNAPSHOT_KEY_INFO.toByteArray(Charsets.UTF_8))
+        java.util.Arrays.fill(dek, 0.toByte())
+        return derived
     }
 
     private fun serializeToJson(passwords: List<PasswordEntity>): String {
@@ -125,18 +130,17 @@ class SnapshotManager @Inject constructor(
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey)
         val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
-        // 格式: IV(12 bytes) + Key(32 bytes) + EncryptedData
+        // 格式: IV(12 bytes) + EncryptedData（密钥由 DEK 派生，不存于文件）
         val iv = cipher.iv
-        val result = ByteArray(iv.size + keyBytes.size + encrypted.size)
+        val result = ByteArray(iv.size + encrypted.size)
         System.arraycopy(iv, 0, result, 0, iv.size)
-        System.arraycopy(keyBytes, 0, result, iv.size, keyBytes.size)
-        System.arraycopy(encrypted, 0, result, iv.size + keyBytes.size, encrypted.size)
+        System.arraycopy(encrypted, 0, result, iv.size, encrypted.size)
         return result
     }
 
     private fun decryptData(encryptedData: ByteArray, keyBytes: ByteArray): String {
         val iv = encryptedData.copyOfRange(0, 12)
-        val actualEncrypted = encryptedData.copyOfRange(12 + keyBytes.size, encryptedData.size)
+        val actualEncrypted = encryptedData.copyOfRange(12, encryptedData.size)
         val secretKey: SecretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
@@ -144,7 +148,7 @@ class SnapshotManager @Inject constructor(
         return String(decrypted, Charsets.UTF_8)
     }
 
-    private fun writeSnapshotFile(encryptedData: ByteArray, key: ByteArray) {
+    private fun writeSnapshotFile(encryptedData: ByteArray) {
         val timestamp = System.currentTimeMillis()
         val file = File(snapshotsDir, "${SNAPSHOT_PREFIX}${timestamp}${SNAPSHOT_EXTENSION}")
         FileOutputStream(file).use { it.write(encryptedData) }

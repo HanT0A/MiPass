@@ -3,7 +3,7 @@ package com.hanzg.mipass.ui.screens
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hanzg.mipass.data.local.AppPreferences
-import com.hanzg.mipass.data.local.PasswordEntity
+import com.hanzg.mipass.domain.model.Password
 import com.hanzg.mipass.domain.model.EntryType
 import com.hanzg.mipass.domain.repository.PasswordRepository
 import com.hanzg.mipass.domain.usecase.GeneratePasswordUseCase
@@ -25,7 +25,7 @@ data class PasswordFormState(
     val url: String = "",
     val account: String = "",
     val password: String = "",
-    val category: String = "其他",
+    val category: String = "",
     val notes: String = "",
     val iconUri: String? = null,
     val isNew: Boolean = true
@@ -65,7 +65,7 @@ class PasswordFormViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            _categories.value = repository.getAllCategories()
+            _categories.value = repository.getCategoriesByType(EntryType.APP.name)
         }
     }
 
@@ -74,13 +74,16 @@ class PasswordFormViewModel @Inject constructor(
             type = type,
             isNew = true
         )
+        viewModelScope.launch {
+            _categories.value = repository.getCategoriesByType(type.name)
+        }
     }
 
     fun loadForEdit(passwordId: String) {
         viewModelScope.launch {
-            _categories.value = repository.getAllCategories()
             val entity = repository.getPasswordById(passwordId)
             if (entity != null) {
+                _categories.value = repository.getCategoriesByType(entity.type.name)
                 _formState.value = PasswordFormState(
                     id = entity.id,
                     type = entity.type,
@@ -126,14 +129,17 @@ class PasswordFormViewModel @Inject constructor(
     }
 
     fun onTypeChanged(type: EntryType) {
-        _formState.update { it.copy(type = type) }
+        _formState.update { it.copy(type = type, category = "") }
+        viewModelScope.launch {
+            _categories.value = repository.getCategoriesByType(type.name)
+        }
     }
 
     fun save(onSuccess: () -> Unit) {
         viewModelScope.launch {
             val state = _formState.value
             if (state.name.isBlank() || state.password.isBlank()) return@launch
-            val entity = PasswordEntity(
+            val entity = Password(
                 id = state.id ?: java.util.UUID.randomUUID().toString(),
                 type = state.type,
                 name = state.name,

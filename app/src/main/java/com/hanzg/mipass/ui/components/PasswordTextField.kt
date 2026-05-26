@@ -53,7 +53,7 @@ fun PasswordTextField(
                 additionalTrailingIcons?.invoke()
                 IconButton(onClick = { visible = !visible }) {
                     Icon(
-                        imageVector = if (visible) PhosphorIcons.Regular.EyeSlash else PhosphorIcons.Regular.Eye,
+                        imageVector = if (visible) PhosphorIcons.Regular.Eye else PhosphorIcons.Regular.EyeSlash,
                         contentDescription = if (visible) "隐藏密码" else "显示密码",
                         modifier = Modifier.size(20.dp)
                     )

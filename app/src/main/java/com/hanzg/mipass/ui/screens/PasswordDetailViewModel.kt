@@ -2,7 +2,7 @@ package com.hanzg.mipass.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hanzg.mipass.data.local.PasswordEntity
+import com.hanzg.mipass.domain.model.Password
 import com.hanzg.mipass.domain.repository.PasswordRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class PasswordDetailState(
-    val entity: PasswordEntity? = null,
+    val entity: Password? = null,
     val isLoading: Boolean = true
 )
 

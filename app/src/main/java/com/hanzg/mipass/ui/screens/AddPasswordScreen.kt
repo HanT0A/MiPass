@@ -168,11 +168,11 @@ fun AddPasswordScreen(
                             IconButton(
                                 onClick = {
                                     if (state.name.isBlank()) {
-                                        Toast.makeText(context, "名称为必填项", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
                                         return@IconButton
                                     }
                                     if (state.password.isBlank()) {
-                                        Toast.makeText(context, "密码不能为空", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "请输入密码", Toast.LENGTH_SHORT).show()
                                         return@IconButton
                                     }
                                     viewModel.save { onNavigateBack() }
@@ -350,7 +350,7 @@ fun AddPasswordScreen(
                     value = state.password,
                     onValueChange = viewModel::onPasswordChanged,
                     label = "密码",
-                    placeholder = "点击右侧 Shuffle 生成",
+                    placeholder = "输入或点击右侧生成",
                     modifier = Modifier.fillMaxWidth(),
                     additionalTrailingIcons = {
                         Icon(

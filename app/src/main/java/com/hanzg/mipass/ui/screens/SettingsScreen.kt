@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -54,81 +55,49 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.*
-import com.hanzg.mipass.data.local.AppPreferences
-import com.hanzg.mipass.data.local.AppSettings
+
 import com.hanzg.mipass.data.local.PasswordDao
-import com.hanzg.mipass.data.local.SnapshotManager
+import com.hanzg.mipass.utils.BiometricPromptManager
+import com.hanzg.mipass.utils.BiometricResult
+import com.hanzg.mipass.ui.components.PasswordTextField
 import com.hanzg.mipass.ui.navigation.MiPassBottomBar
 import com.hanzg.mipass.ui.navigation.NavRoutes
-import com.hanzg.mipass.utils.BiometricPromptManager
-import com.hanzg.mipass.utils.LocaleHelper
-import com.hanzg.mipass.utils.MasterPasswordManager
-import com.hanzg.mipass.utils.SelfDestructManager
 import com.hanzg.mipass.utils.VerifyResult
-import com.hanzg.mipass.utils.BiometricResult
-import com.hanzg.mipass.domain.repository.PasswordRepository
-import com.hanzg.mipass.ui.components.PasswordTextField
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface SettingsEntryPoint {
-    fun appPreferences(): AppPreferences
-    fun biometricPromptManager(): BiometricPromptManager
-    fun selfDestructManager(): SelfDestructManager
-    fun snapshotManager(): SnapshotManager
-    fun passwordRepository(): PasswordRepository
-    fun passwordDao(): PasswordDao
-    fun masterPasswordManager(): MasterPasswordManager
-    fun localeHelper(): LocaleHelper
-}
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigate: (String) -> Unit,
     pendingImportUri: Uri? = null,
-    backupViewModel: BackupViewModel = hiltViewModel()
+    backupViewModel: BackupViewModel = hiltViewModel(),
+    viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val entryPoint = remember {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            SettingsEntryPoint::class.java
-        )
-    }
-    val prefs = entryPoint.appPreferences()
-    val biometricManager = entryPoint.biometricPromptManager()
-    val selfDestructManager = entryPoint.selfDestructManager()
-    val snapshotManager = entryPoint.snapshotManager()
-    val passwordRepo = entryPoint.passwordRepository()
-    val masterPasswordManager = entryPoint.masterPasswordManager()
-    val localeHelper = entryPoint.localeHelper()
 
-    val passwordDao = entryPoint.passwordDao()
-    val settings by prefs.settingsFlow.collectAsState(initial = AppSettings())
+    val uiState by viewModel.uiState.collectAsState()
+    val settings by viewModel.settings.collectAsState()
 
     var showExportVerify by remember { mutableStateOf(false) }
     var showExportMasterPwd by remember { mutableStateOf(false) }
     var bioRetryKey by remember { mutableStateOf(0) }
+    var showExportFormat by remember { mutableStateOf(false) }
     var showExportDisclaimer by remember { mutableStateOf(false) }
     var showExportPasscode by remember { mutableStateOf(false) }
+    var showUnencryptedWarning by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showImportStrategy by remember { mutableStateOf(false) }
     var importPendingUri by remember { mutableStateOf<Uri?>(null) }
 
-    var showThemeSheet by remember { mutableStateOf(false) }
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showLockTimeoutSheet by remember { mutableStateOf(false) }
 
     var showGeneratorRuleDialog by remember { mutableStateOf(false) }
     var showProtectionDialog by remember { mutableStateOf(false) }
-    var showSelfDestructDialog by remember { mutableStateOf(false) }
+    var showDisableBioVerify by remember { mutableStateOf(false) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var showScreenshotDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
@@ -137,8 +106,8 @@ fun SettingsScreen(
     var showSnapshotSheet by remember { mutableStateOf(false) }
     var showClearStep1 by remember { mutableStateOf(false) }
     var showClearStep2 by remember { mutableStateOf(false) }
+    var showClearVerifyPwd by remember { mutableStateOf(false) }
     var clearConfirmText by remember { mutableStateOf("") }
-    var snapshotFiles by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
 
     val backupState by backupViewModel.uiState.collectAsState()
 
@@ -155,16 +124,6 @@ fun SettingsScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        snapshotFiles = snapshotManager.listSnapshots()
-    }
-
-    val themeDisplay = when (settings.themeMode) {
-        "light" -> "浅色"
-        "dark" -> "深色"
-        else -> "跟随系统"
-    }
-
     val languageDisplay = "简体中文"
 
     val generatorDisplay = "${settings.generatorLength} / " + buildString {
@@ -176,42 +135,33 @@ fun SettingsScreen(
         append(parts.joinToString("+"))
     }
 
-    Scaffold(
-        topBar = {
-            Column(modifier = Modifier.statusBarsPadding()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.background
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(modifier = Modifier.statusBarsPadding()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f))
-                        Text("设置", style = MaterialTheme.typography.titleMedium)
-                        Box(modifier = Modifier.weight(1f))
-                    }
+                    Box(modifier = Modifier.weight(1f))
+                    Text("设置", style = MaterialTheme.typography.titleMedium)
+                    Box(modifier = Modifier.weight(1f))
                 }
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
             }
-        },
-        bottomBar = {
-            MiPassBottomBar(
-                currentRoute = NavRoutes.Settings.route,
-                onNavigate = onNavigate
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
             )
         }
-    ) { padding ->
+
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .weight(1f).fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
         ) {
@@ -220,17 +170,17 @@ fun SettingsScreen(
                 }
             SettingsCard {
                 SettingsRow(
-                    "修改主密码",
-                    if (masterPasswordManager.hasMasterPassword()) "已设置" else "未设置"
+                    "修改密钥",
+                    if (viewModel.getMasterPasswordManager().hasMasterPassword()) "已设置" else "未设置"
                 ) { showMasterPasswordDialog = true }
                 HorizontalDivider()
                 SettingsRow(
-                    "生物识别解锁",
+                    "系统验证",
                     if (settings.biometricEnabled) "已开启" else "已关闭"
                 ) { showProtectionDialog = true }
                 HorizontalDivider()
                 SettingsRow(
-                    "自动锁定延时",
+                    "自动锁定",
                     when {
                         settings.lockTimeoutSeconds == -1 -> "永不"
                         settings.lockTimeoutSeconds == 0 -> "即时锁定"
@@ -240,14 +190,10 @@ fun SettingsScreen(
                 ) { showLockTimeoutSheet = true }
                 HorizontalDivider()
                 SettingsRow(
-                    "防截屏保护",
+                    "防截屏",
                     if (settings.screenshotProtection) "已开启" else "已关闭"
                 ) { showScreenshotDialog = true }
                 HorizontalDivider()
-                SettingsRow(
-                    "自毁机制",
-                    if (settings.selfDestructEnabled) "已开启" else "已关闭"
-                ) { showSelfDestructDialog = true }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -256,22 +202,24 @@ fun SettingsScreen(
                     Icon(PhosphorIcons.Regular.Database, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             SettingsCard {
-                SettingsRow("数据导出", "加密导出 .mipass 备份文件") { showExportVerify = true }
+                SettingsRow("数据导出", "支持 .mipass / .json / .csv 文件") { showExportVerify = true }
                 HorizontalDivider()
-                SettingsRow("数据导入与恢复", "导入 .mipass 备份文件") {
+                SettingsRow("数据导入与恢复", "支持 .mipass / .json / .csv 文件") {
                     backupViewModel.setPendingImportUri(null)
                     showImportDialog = true
                 }
                 HorizontalDivider()
                 SettingsRow(
                     "数据快照",
-                    if (snapshotFiles.isEmpty()) "点击手动保存" else "已保存 ${snapshotFiles.size}/5 份"
+                    if (uiState.snapshotFiles.isEmpty()) "点击创建快照" else "已保存 ${uiState.snapshotFiles.size}/5 份"
                 ) {
-                    snapshotFiles = snapshotManager.listSnapshots()
+                    scope.launch(Dispatchers.IO) {
+                        viewModel.refreshSnapshots()
+                    }
                     showSnapshotSheet = true
                 }
                 HorizontalDivider()
-                SettingsRow("清除所有数据", "需身份验证，不可恢复") { showClearStep1 = true }
+                SettingsRow("清除所有数据", "验证身份后清除，不可恢复") { showClearStep1 = true }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -280,9 +228,7 @@ fun SettingsScreen(
                     Icon(PhosphorIcons.Regular.SlidersHorizontal, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             SettingsCard {
-                SettingsRow("主题风格", themeDisplay) { showThemeSheet = true }
-                HorizontalDivider()
-                SettingsRow("显示语言", languageDisplay) { showLanguageSheet = true }
+                SettingsRow("语言", languageDisplay) { showLanguageSheet = true }
                 HorizontalDivider()
                 SettingsRow("密码生成偏好", generatorDisplay) { showGeneratorRuleDialog = true }
             }
@@ -297,9 +243,9 @@ fun SettingsScreen(
                     Toast.makeText(context, "MiPass v1.0 · 纯本地零网络密码管理", Toast.LENGTH_SHORT).show()
                 }
                 HorizontalDivider()
-                SettingsRow("使用说明", "基本操作与功能介绍") { showUsageGuideDialog = true }
+                SettingsRow("使用说明", "基本功能与操作") { showUsageGuideDialog = true }
                 HorizontalDivider()
-                SettingsRow("隐私政策", "数据收集与隐私保护声明") { showPrivacyPolicyDialog = true }
+                SettingsRow("隐私政策", "你的数据只属于你") { showPrivacyPolicyDialog = true }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -308,24 +254,17 @@ fun SettingsScreen(
                     Icon(PhosphorIcons.Regular.Eye, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             SettingsCard {
-                SettingsRow("应用权限说明", "权限列表及使用目的") { showAppPermissionDialog = true }
+                SettingsRow("应用权限", "权限与用途") { showAppPermissionDialog = true }
             }
 
         }
+        MiPassBottomBar(
+            currentRoute = NavRoutes.Settings.route,
+            onNavigate = onNavigate
+        )
     }
 
     // === BottomSheets ===
-
-    if (showThemeSheet) {
-        ThemeBottomSheet(
-            selected = settings.themeMode,
-            onSelect = { value ->
-                prefs.setThemeMode(value)
-                showThemeSheet = false
-            },
-            onDismiss = { showThemeSheet = false }
-        )
-    }
 
     if (showLanguageSheet) {
         LanguageBottomSheet(
@@ -344,7 +283,7 @@ fun SettingsScreen(
         LockTimeoutBottomSheet(
             current = settings.lockTimeoutSeconds,
             onSelect = { value ->
-                prefs.setLockTimeout(value)
+                viewModel.setLockTimeout(value)
                 showLockTimeoutSheet = false
             },
             onDismiss = { showLockTimeoutSheet = false }
@@ -353,12 +292,14 @@ fun SettingsScreen(
 
     if (showSnapshotSheet) {
         SnapshotBottomSheet(
-            snapshotFiles = snapshotFiles,
-            snapshotManager = snapshotManager,
-            passwordDao = passwordDao,
+            snapshotFiles = uiState.snapshotFiles,
+            snapshotManager = viewModel.getSnapshotManager(),
+            passwordDao = viewModel.getPasswordDao(),
             onDismiss = {
                 showSnapshotSheet = false
-                snapshotFiles = snapshotManager.listSnapshots()
+                scope.launch(Dispatchers.IO) {
+                    viewModel.refreshSnapshots()
+                }
             }
         )
     }
@@ -367,22 +308,37 @@ fun SettingsScreen(
 
     if (showMasterPasswordDialog) {
         MasterPasswordDialog(
-            hasPassword = masterPasswordManager.hasMasterPassword(),
+            hasPassword = viewModel.getMasterPasswordManager().hasMasterPassword(),
             onSet = { newPwd ->
-                masterPasswordManager.setMasterPassword(newPwd)
-                Toast.makeText(context, "主密码设置成功", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        viewModel.getMasterPasswordManager().setMasterPassword(newPwd)
+                    }
+                    if (result == com.hanzg.mipass.utils.SetResult.Success) {
+                        Toast.makeText(context, "密钥设置成功", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "新密钥强度不足（需≥8位且包含字母+数字）", Toast.LENGTH_SHORT).show()
+                    }
+                }
             },
             onChange = { oldPwd, newPwd ->
-                when (masterPasswordManager.verifyMasterPassword(oldPwd)) {
-                    is com.hanzg.mipass.utils.VerifyResult.Success -> {
-                        val setResult = masterPasswordManager.setMasterPassword(newPwd)
-                        if (setResult == com.hanzg.mipass.utils.SetResult.Success) {
-                            Toast.makeText(context, "主密码已修改", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "新密码强度不足（需≥8位且包含字母+数字）", Toast.LENGTH_SHORT).show()
-                        }
+                scope.launch {
+                    val verifyResult = withContext(Dispatchers.IO) {
+                        viewModel.getMasterPasswordManager().verifyMasterPassword(oldPwd)
                     }
-                    else -> Toast.makeText(context, "当前密码错误", Toast.LENGTH_SHORT).show()
+                    when (verifyResult) {
+                        is com.hanzg.mipass.utils.VerifyResult.Success -> {
+                            val setResult = withContext(Dispatchers.IO) {
+                                viewModel.getMasterPasswordManager().setMasterPassword(newPwd)
+                            }
+                            if (setResult == com.hanzg.mipass.utils.SetResult.Success) {
+                                Toast.makeText(context, "密钥已修改", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "新密钥强度不足（需≥8位且包含字母+数字）", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        else -> Toast.makeText(context, "当前密钥错误", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             onDismiss = { showMasterPasswordDialog = false }
@@ -393,11 +349,7 @@ fun SettingsScreen(
         GeneratorRuleDialog(
             settings = settings,
             onUpdate = { length, upper, lower, digits, symbols ->
-                prefs.setGeneratorLength(length)
-                prefs.setGeneratorUppercase(upper)
-                prefs.setGeneratorLowercase(lower)
-                prefs.setGeneratorDigits(digits)
-                prefs.setGeneratorSymbols(symbols)
+                viewModel.updateGeneratorDefaults(length, upper, lower, digits, symbols)
             },
             onDismiss = { showGeneratorRuleDialog = false }
         )
@@ -406,38 +358,80 @@ fun SettingsScreen(
     if (showProtectionDialog) {
         BiometricToggleDialog(
             lockEnabled = settings.biometricEnabled,
-            biometricManager = biometricManager,
+            biometricManager = viewModel.getBiometricManager(),
             onToggle = { enabled ->
                 if (enabled) {
-                    val canAuth = biometricManager.canAuthenticate()
+                    val canAuth = viewModel.getBiometricManager().canAuthenticate()
                     if (canAuth is com.hanzg.mipass.utils.BiometricResult.Ready) {
-                        prefs.setBiometricEnabled(true)
+                        viewModel.toggleBiometric(true)
                     } else {
                         Toast.makeText(
                             context,
                             when (canAuth) {
-                                is com.hanzg.mipass.utils.BiometricResult.NoHardware -> "设备不支持生物识别"
-                                is com.hanzg.mipass.utils.BiometricResult.NotEnrolled -> "系统未录入指纹/面容，请在系统设置中录入后再开启"
-                                else -> "生物识别暂不可用"
+                                is com.hanzg.mipass.utils.BiometricResult.NoHardware -> "设备不支持系统验证"
+                                is com.hanzg.mipass.utils.BiometricResult.NotEnrolled -> "系统未设置屏幕锁，请在系统设置中设置后再开启"
+                                else -> "系统验证暂不可用"
                             },
                             Toast.LENGTH_LONG
                         ).show()
                     }
                 } else {
-                    prefs.setBiometricEnabled(false)
+                    showProtectionDialog = false
+                    showDisableBioVerify = true
                 }
             },
             onDismiss = { showProtectionDialog = false }
         )
     }
 
-    if (showSelfDestructDialog) {
-        SelfDestructDialog(
-            enabled = settings.selfDestructEnabled,
-            maxAttempts = settings.selfDestructThreshold,
-            onToggle = { prefs.setSelfDestructEnabled(it) },
-            onThresholdChange = { prefs.setSelfDestructThreshold(it) },
-            onDismiss = { showSelfDestructDialog = false }
+    if (showDisableBioVerify) {
+        var disablePwd by remember { mutableStateOf("") }
+        var disableError by remember { mutableStateOf<String?>(null) }
+        var disableVerifying by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { showDisableBioVerify = false },
+            title = { Text("验证密钥") },
+            text = {
+                Column {
+                    Text("关闭系统验证前需验证密钥", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    PasswordTextField(
+                        value = disablePwd,
+                        onValueChange = { disablePwd = it; disableError = null },
+                        label = "密钥",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (disableError != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(disableError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val pwd = disablePwd
+                        scope.launch {
+                            disableVerifying = true
+                            val result = withContext(Dispatchers.IO) {
+                                viewModel.getMasterPasswordManager().verifyMasterPassword(pwd)
+                            }
+                            disableVerifying = false
+                            when (result) {
+                                is VerifyResult.Success -> {
+                                    showDisableBioVerify = false
+                                    viewModel.toggleBiometric(false)
+                                }
+                                is VerifyResult.Failed -> disableError = "密钥错误"
+                                is VerifyResult.LockedOut -> disableError = "已锁定 ${result.remainingSeconds} 秒"
+                                else -> disableError = "验证失败"
+                            }
+                        }
+                    },
+                    enabled = disablePwd.isNotEmpty() && !disableVerifying
+                ) { Text(if (disableVerifying) "验证中..." else "确认关闭") }
+            },
+            dismissButton = { TextButton(onClick = { showDisableBioVerify = false }) { Text("取消") } }
         )
     }
 
@@ -445,7 +439,7 @@ fun SettingsScreen(
         ScreenshotDialog(
             screenshotProtection = settings.screenshotProtection,
             onToggle = { newValue ->
-                prefs.setScreenshotProtection(newValue)
+                viewModel.toggleScreenshotProtection(newValue)
                 Toast.makeText(
                     context,
                     if (newValue) "防截屏已开启，重启应用后生效" else "防截屏已关闭，重启应用后生效",
@@ -473,17 +467,14 @@ fun SettingsScreen(
     if (showExportVerify) {
         LaunchedEffect(bioRetryKey) {
             if (settings.biometricEnabled) {
-                val bioResult = biometricManager.canAuthenticate()
+                val bioResult = viewModel.getBiometricManager().canAuthenticate()
                 if (bioResult is BiometricResult.Ready) {
-                    biometricManager.showPrompt(
+                    viewModel.getBiometricManager().showPrompt(
                         activity = context as androidx.fragment.app.FragmentActivity,
                         title = "验证身份",
                         subtitle = "导出数据前需要验证身份",
-                        onSuccess = { showExportVerify = false; showExportDisclaimer = true },
-                        onError = { code, _ ->
-                            showExportVerify = false
-                            if (code == 13) showExportMasterPwd = true
-                        },
+                        onSuccess = { showExportVerify = false; showExportFormat = true },
+                        onError = { _, _ -> showExportVerify = false },
                         onFailed = { }
                     )
                 } else {
@@ -500,19 +491,20 @@ fun SettingsScreen(
     if (showExportMasterPwd) {
         var pwd by remember { mutableStateOf("") }
         var pwdError by remember { mutableStateOf<String?>(null) }
+        var exportVerifying by remember { mutableStateOf(false) }
         val canSwitchBio = settings.biometricEnabled &&
-            biometricManager.canAuthenticate() is BiometricResult.Ready
+            viewModel.getBiometricManager().canAuthenticate() is BiometricResult.Ready
         AlertDialog(
             onDismissRequest = { showExportMasterPwd = false },
-            title = { Text("验证主密码") },
+            title = { Text("验证密钥") },
             text = {
                 Column {
-                    Text("导出数据前需验证主密码", style = MaterialTheme.typography.bodyMedium)
+                    Text("导出数据前需验证密钥", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(12.dp))
                     PasswordTextField(
                         value = pwd,
                         onValueChange = { pwd = it; pwdError = null },
-                        label = "主密码",
+                        label = "密钥",
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (pwdError != null) {
@@ -523,16 +515,24 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    when (val result = masterPasswordManager.verifyMasterPassword(pwd)) {
-                        is VerifyResult.Success -> {
-                            showExportMasterPwd = false
-                            showExportDisclaimer = true
+                    val pwdVal = pwd
+                    scope.launch {
+                        exportVerifying = true
+                        val result = withContext(Dispatchers.IO) {
+                            viewModel.getMasterPasswordManager().verifyMasterPassword(pwdVal)
                         }
-                        is VerifyResult.Failed -> pwdError = "密码错误"
-                        is VerifyResult.LockedOut -> pwdError = "已锁定 ${result.remainingSeconds} 秒"
-                        else -> pwdError = "验证失败"
+                        exportVerifying = false
+                        when (result) {
+                            is VerifyResult.Success -> {
+                                showExportMasterPwd = false
+                                showExportDisclaimer = true
+                            }
+                            is VerifyResult.Failed -> pwdError = "密钥错误"
+                            is VerifyResult.LockedOut -> pwdError = "已锁定 ${result.remainingSeconds} 秒"
+                            else -> pwdError = "验证失败"
+                        }
                     }
-                }) { Text("确认") }
+                }, enabled = pwd.isNotEmpty() && !exportVerifying) { Text(if (exportVerifying) "验证中..." else "确认") }
             },
             dismissButton = {
                 Row {
@@ -557,6 +557,22 @@ fun SettingsScreen(
         )
     }
 
+    if (showExportFormat) {
+        ExportFormatBottomSheet(
+            current = backupState.exportFormat,
+            onConfirm = { format ->
+                backupViewModel.setExportFormat(format)
+                showExportFormat = false
+                if (format == com.hanzg.mipass.data.local.ExportFormat.MIPASS) {
+                    showExportDisclaimer = true
+                } else {
+                    showUnencryptedWarning = true
+                }
+            },
+            onDismiss = { showExportFormat = false }
+        )
+    }
+
     if (showExportDisclaimer) {
         ExportDisclaimerDialog(
             onConfirm = { showExportDisclaimer = false; showExportPasscode = true },
@@ -564,10 +580,20 @@ fun SettingsScreen(
         )
     }
 
+    if (showUnencryptedWarning) {
+        UnencryptedExportWarningDialog(
+            onConfirm = {
+                showUnencryptedWarning = false
+                backupViewModel.exportGeneric()
+            },
+            onDismiss = { showUnencryptedWarning = false }
+        )
+    }
+
     if (showExportPasscode) {
         PasscodeDialog(
-            title = "导出备份",
-            subtitle = "请设置 6 位数字提取码以加密备份文件（全量导出）",
+            title = "设置导出提取码",
+            subtitle = "请设置提取码（8位以上，含字母和数字）以加密导出文件",
             passcode = backupState.passcode,
             passcodeError = backupState.passcodeError,
             isLoading = backupState.isExporting,
@@ -578,7 +604,7 @@ fun SettingsScreen(
     }
 
     val exportSaver = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+        contract = ActivityResultContracts.CreateDocument("*/*")
     ) { uri ->
         if (uri != null && backupState.exportFile != null) {
             try {
@@ -612,16 +638,14 @@ fun SettingsScreen(
                 if (result.success) {
                     Row {
                         TextButton(onClick = {
-                            com.hanzg.mipass.MainActivity.skipAuthOnce = true
-                            com.hanzg.mipass.MainActivity.skipNextLockCheck = true
+                            com.hanzg.mipass.MainActivity.requestAuthBypass()
                             backupViewModel.shareExportedFile()
                             backupViewModel.clearResult()
                             showExportPasscode = false
                         }) { Icon(PhosphorIcons.Regular.ShareNetwork, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("分享") }
                         Spacer(modifier = Modifier.width(8.dp))
                         TextButton(onClick = {
-                            com.hanzg.mipass.MainActivity.skipAuthOnce = true
-                            com.hanzg.mipass.MainActivity.skipNextLockCheck = true
+                            com.hanzg.mipass.MainActivity.requestAuthBypass()
                             exportSaver.launch(backupState.exportFileName)
                         }) { Icon(PhosphorIcons.Regular.FloppyDisk, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("保存到文件夹") }
                     }
@@ -644,30 +668,40 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            importPendingUri = uri
-            showImportDialog = true
+            val format = backupViewModel.detectImportFormat(uri)
+            if (format == com.hanzg.mipass.data.local.ImportFormat.UNKNOWN) {
+                Toast.makeText(context, "不支持的格式，请选择 .mipass / .json / .csv 文件", Toast.LENGTH_SHORT).show()
+            } else {
+                importPendingUri = uri
+                backupViewModel.setPendingImportFormat(format)
+                showImportDialog = true
+            }
         }
     }
 
     if (showImportDialog && !backupState.isImporting) {
         if (importPendingUri != null) {
-            PasscodeDialog(
-                title = "导入备份",
-                subtitle = "请输入导出时设置的 6 位提取码",
-                passcode = backupState.passcode,
-                passcodeError = backupState.passcodeError,
-                isLoading = backupState.isImporting,
-                onPasscodeChanged = backupViewModel::onPasscodeChanged,
-                onConfirm = {
-                    showImportDialog = false
-                    showImportStrategy = true
-                },
-                onDismiss = { showImportDialog = false; importPendingUri = null; backupViewModel.dismissImport() }
-            )
+            if (backupState.pendingImportFormat == com.hanzg.mipass.data.local.ImportFormat.MIPASS) {
+                PasscodeDialog(
+                    title = "输入提取码",
+                    subtitle = "请输入导出时设定的提取码以解密文件",
+                    passcode = backupState.passcode,
+                    passcodeError = backupState.passcodeError,
+                    isLoading = backupState.isImporting,
+                    onPasscodeChanged = backupViewModel::onPasscodeChanged,
+                    onConfirm = {
+                        showImportDialog = false
+                        showImportStrategy = true
+                    },
+                    onDismiss = { showImportDialog = false; importPendingUri = null; backupViewModel.dismissImport() }
+                )
+            } else {
+                showImportDialog = false
+                showImportStrategy = true
+            }
         } else {
             LaunchedEffect(Unit) {
-                com.hanzg.mipass.MainActivity.skipAuthOnce = true
-                com.hanzg.mipass.MainActivity.skipNextLockCheck = true
+                com.hanzg.mipass.MainActivity.requestAuthBypass()
                 importFilePicker.launch(arrayOf("application/octet-stream", "*/*"))
                 showImportDialog = false
             }
@@ -675,16 +709,23 @@ fun SettingsScreen(
     }
 
     if (showImportStrategy) {
+        val isEncrypted = backupState.pendingImportFormat == com.hanzg.mipass.data.local.ImportFormat.MIPASS
         ImportStrategyDialog(
             onMerge = {
                 val uri = importPendingUri
                 showImportStrategy = false
-                if (uri != null) backupViewModel.importFromUri(uri)
+                if (uri != null) {
+                    if (isEncrypted) backupViewModel.importFromUri(uri)
+                    else backupViewModel.importGenericFromUri(uri)
+                }
             },
             onReplace = {
                 val uri = importPendingUri
                 showImportStrategy = false
-                if (uri != null) backupViewModel.importReplace(uri)
+                if (uri != null) {
+                    if (isEncrypted) backupViewModel.importReplace(uri)
+                    else backupViewModel.importGenericReplaceFromUri(uri)
+                }
             },
             onDismiss = { showImportStrategy = false; importPendingUri = null; backupViewModel.dismissImport() }
         )
@@ -708,9 +749,8 @@ fun SettingsScreen(
 
     if (showClearStep1) {
         LaunchedEffect(Unit) {
-            val bioResult = biometricManager.canAuthenticate()
-            if (bioResult is com.hanzg.mipass.utils.BiometricResult.Ready) {
-                biometricManager.showPrompt(
+            if (settings.biometricEnabled && viewModel.getBiometricManager().canAuthenticate() is BiometricResult.Ready) {
+                viewModel.getBiometricManager().showPrompt(
                     activity = context as androidx.fragment.app.FragmentActivity,
                     title = "验证身份",
                     subtitle = "清除所有数据前需要验证身份",
@@ -720,9 +760,60 @@ fun SettingsScreen(
                 )
             } else {
                 showClearStep1 = false
-                showClearStep2 = true
+                showClearVerifyPwd = true
             }
         }
+    }
+
+    if (showClearVerifyPwd) {
+        var clearPwd by remember { mutableStateOf("") }
+        var clearError by remember { mutableStateOf<String?>(null) }
+        var clearVerifying by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { showClearVerifyPwd = false },
+            title = { Text("验证密钥") },
+            text = {
+                Column {
+                    Text("清除所有数据前需验证密钥", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    PasswordTextField(
+                        value = clearPwd,
+                        onValueChange = { clearPwd = it; clearError = null },
+                        label = "密钥",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (clearError != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(clearError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val pwd = clearPwd
+                        scope.launch {
+                            clearVerifying = true
+                            val result = withContext(Dispatchers.IO) {
+                                viewModel.getMasterPasswordManager().verifyMasterPassword(pwd)
+                            }
+                            clearVerifying = false
+                            when (result) {
+                                is VerifyResult.Success -> {
+                                    showClearVerifyPwd = false
+                                    showClearStep2 = true
+                                }
+                                is VerifyResult.Failed -> clearError = "密钥错误"
+                                is VerifyResult.LockedOut -> clearError = "已锁定 ${result.remainingSeconds} 秒"
+                                else -> clearError = "验证失败"
+                            }
+                        }
+                    },
+                    enabled = clearPwd.isNotEmpty() && !clearVerifying
+                ) { Text(if (clearVerifying) "验证中..." else "确认") }
+            },
+            dismissButton = { TextButton(onClick = { showClearVerifyPwd = false }) { Text("取消") } }
+        )
     }
 
     if (showClearStep2) {
@@ -731,15 +822,7 @@ fun SettingsScreen(
             onTextChanged = { clearConfirmText = it },
             onConfirm = {
                 if (clearConfirmText == "DELETE") {
-                    scope.launch {
-                        try {
-                            passwordRepo.deleteAll()
-                            prefs.clearAll()
-                            Toast.makeText(context, "所有数据已清除", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "清除失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    viewModel.performClearAll()
                     showClearStep2 = false
                     clearConfirmText = ""
                     (context as? android.app.Activity)?.finishAffinity()

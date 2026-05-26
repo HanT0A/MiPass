@@ -1,16 +1,15 @@
 package com.hanzg.mipass.ui.navigation
 
 import android.net.Uri
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -71,55 +70,56 @@ fun MiPassNavHost(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = NavRoutes.Vault.route,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        composable(
-            NavRoutes.Vault.route,
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None }
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        NavHost(
+            navController = navController,
+            startDestination = NavRoutes.Vault.route,
+            modifier = Modifier.fillMaxSize()
         ) {
-            VaultScreen(
-                onNavigateToDetail = { id ->
-                    navController.navigate(NavRoutes.Detail.createRoute(id))
-                },
-                onNavigateToAdd = { type ->
-                    navController.navigate(NavRoutes.Add.createRoute(type))
-                },
-                onNavigate = onTabNavigate,
-                clipboardUtils = clipboardUtils
-            )
-        }
+            composable(
+                NavRoutes.Vault.route,
+                enterTransition = { fadeIn(tween(100)) },
+                exitTransition = { fadeOut(tween(70)) },
+                popEnterTransition = { fadeIn(tween(100)) },
+                popExitTransition = { fadeOut(tween(70)) }
+            ) {
+                VaultScreen(
+                    onNavigateToDetail = { id ->
+                        navController.navigate(NavRoutes.Detail.createRoute(id))
+                    },
+                    onNavigateToAdd = { type ->
+                        navController.navigate(NavRoutes.Add.createRoute(type))
+                    },
+                    onNavigate = onTabNavigate,
+                    clipboardUtils = clipboardUtils
+                )
+            }
 
-        composable(
-            NavRoutes.Generator.route,
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None }
-        ) {
-            GeneratorScreen(
-                onNavigate = onTabNavigate,
-                clipboardUtils = clipboardUtils
-            )
-        }
+            composable(
+                NavRoutes.Generator.route,
+                enterTransition = { fadeIn(tween(100)) },
+                exitTransition = { fadeOut(tween(70)) },
+                popEnterTransition = { fadeIn(tween(100)) },
+                popExitTransition = { fadeOut(tween(70)) }
+            ) {
+                GeneratorScreen(
+                    onNavigate = onTabNavigate,
+                    clipboardUtils = clipboardUtils
+                )
+            }
 
-        composable(
-            NavRoutes.Settings.route,
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None }
-        ) {
-            SettingsScreen(
-                onNavigate = onTabNavigate,
-                pendingImportUri = pendingImportUri
-            )
-        }
+            composable(
+                NavRoutes.Settings.route,
+                enterTransition = { fadeIn(tween(100)) },
+                exitTransition = { fadeOut(tween(70)) },
+                popEnterTransition = { fadeIn(tween(100)) },
+                popExitTransition = { fadeOut(tween(70)) }
+            ) {
+                SettingsScreen(
+                    onNavigate = onTabNavigate,
+                    pendingImportUri = pendingImportUri
+                )
+            }
 
             composable(
                 route = NavRoutes.Detail.route,
@@ -163,22 +163,26 @@ fun MiPassNavHost(
                 enterTransition = {
                     slideInHorizontally(
                         initialOffsetX = { it },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessLow
-                        )
-                    )
+                        animationSpec = tween(DurationMedium, easing = MiPassEaseOut)
+                    ) + fadeIn(tween(DurationMedium, easing = MiPassEaseOut))
                 },
-                exitTransition = { ExitTransition.None },
-                popEnterTransition = { EnterTransition.None },
+                exitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { -it / 3 },
+                        animationSpec = tween(DurationMedium, easing = MiPassEaseIn)
+                    ) + fadeOut(tween(DurationMedium, easing = MiPassEaseIn))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { -it / 3 },
+                        animationSpec = tween(DurationMedium, easing = MiPassEaseOut)
+                    ) + fadeIn(tween(DurationMedium, easing = MiPassEaseOut))
+                },
                 popExitTransition = {
                     slideOutHorizontally(
                         targetOffsetX = { it },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
+                        animationSpec = tween(DurationMedium, easing = MiPassEaseIn)
+                    ) + fadeOut(tween(DurationMedium, easing = MiPassEaseIn))
                 }
             ) { backStackEntry ->
                 val type = backStackEntry.arguments?.getString("type") ?: "APP"
@@ -188,4 +192,5 @@ fun MiPassNavHost(
                 )
             }
         }
+    }
 }

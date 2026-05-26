@@ -8,27 +8,32 @@
     <!-- 盾牌外轮廓 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,28 L70,36 L70,52 C70,66 62,77 54,82 C46,77 38,66 38,52 L38,36 Z" />
+        android:pathData="M54,26 L72,35 L72,52 C72,67 63,79 54,84 C45,79 36,67 36,52 L36,35 Z" />
+
+    <!-- 盾牌内缩 -->
+    <path
+        android:fillColor="#E0E7FF"
+        android:pathData="M54,30 L68,37 L68,52 C68,65 60,75 54,79 C48,75 40,65 40,52 L40,37 Z" />
 
     <!-- 锁体顶部弧形(U形) -->
     <path
-        android:fillColor="#1565C0"
-        android:pathData="M44,52 L44,48 C44,43 48,40 54,40 C60,40 64,43 64,48 L64,52 Z" />
+        android:fillColor="#4F46E5"
+        android:pathData="M45,51 L45,47 C45,41 49,38 54,38 C59,38 63,41 63,47 L63,51 Z" />
 
     <!-- 锁身矩形 -->
     <path
-        android:fillColor="#1565C0"
-        android:pathData="M48,52 L60,52 L60,64 L48,64 Z" />
+        android:fillColor="#4F46E5"
+        android:pathData="M49,51 L59,51 L59,63 L49,63 Z" />
 
     <!-- 锁孔 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M51,57 A3,2.5 0 1,1 57,57 A3,2.5 0 1,1 51,57 Z" />
+        android:pathData="M51.5,56.5 A3,2.5 0 1,1 56.5,56.5 A3,2.5 0 1,1 51.5,56.5 Z" />
 
     <!-- 锁孔下竖线 -->
     <path
         android:fillColor="#FFFFFF"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="0.8"
-        android:pathData="M53.5,59.5 L54.5,62.5" />
+        android:pathData="M53.75,59 L54.25,62" />
 </vector>
