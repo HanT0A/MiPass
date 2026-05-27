@@ -49,6 +49,8 @@ class KeyStoreManager @Inject constructor(
             .setKeySize(256)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setUserAuthenticationRequired(false)
+            .setRandomizedEncryptionRequired(true)
             .build()
 
         keyGenerator.init(spec)
