@@ -12,8 +12,12 @@
 -dontwarn androidx.room.paging.**
 
 # === SQLCipher ===
+-keep class net.sqlcipher.** { *; }
 -keep class net.sqlcipher.database.** { *; }
--dontwarn net.sqlcipher.database.**
+-keepclassmembers class net.sqlcipher.CursorWindow {
+    long nWindow;
+}
+-dontwarn net.sqlcipher.**
 
 # === Kotlin Coroutines ===
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
